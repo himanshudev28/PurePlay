@@ -1,0 +1,77 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-ink-950: #070708;
+  --color-ink-900: #0c0c0e;
+  --color-ink-850: #121215;
+  --color-ink-800: #17171b;
+  --color-ink-700: #232329;
+  --color-ink-600: #34343d;
+  --color-ink-400: #6c6c7a;
+  --color-ink-300: #9a9aab;
+  --color-ink-200: #c6c6d2;
+
+  --color-accent: #ff6b4a;
+  --color-accent-soft: #ff8a6d;
+  --color-accent-dim: #4a2118;
+
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+
+  --radius-card: 14px;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-ink-950 text-ink-200 font-sans antialiased;
+    margin: 0;
+    overscroll-behavior-y: none;
+  }
+
+  ::selection {
+    background: var(--color-accent);
+    color: #fff;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-ink-600) transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: var(--color-ink-700);
+    border-radius: 999px;
+  }
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* horizontal snapping shelves, like the reference site's rows */
+  .shelf {
+    @apply flex gap-4 overflow-x-auto scrollbar-none pb-2;
+    scroll-snap-type: x proximity;
+  }
+  .shelf > * {
+    scroll-snap-align: start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
