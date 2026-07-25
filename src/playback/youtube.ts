@@ -14,6 +14,7 @@ interface YTPlayer {
   unMute(): void
   getCurrentTime(): number
   getDuration(): number
+  getPlayerState(): number
   destroy(): void
 }
 
@@ -201,6 +202,10 @@ export class YouTubeEngine implements PlaybackEngine {
   }
   pause() {
     this.player?.pauseVideo()
+  }
+  isPlaying() {
+    // YT.PlayerState.PLAYING === 1
+    return this.player?.getPlayerState() === 1
   }
   seek(seconds: number) {
     this.player?.seekTo(seconds, true)

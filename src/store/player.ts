@@ -183,10 +183,11 @@ export const usePlayer = create<PlayerState>((set, get) => ({
 
   toggle() {
     if (!activeEngine || !get().current) return
-    if (get().playing) {
+    // Trust the ENGINE's real state, not the store flag — a missed 'play'/'pause'
+    // media event could leave the flag stale, which made the first click a no-op
+    // (it only "fixed" the flag) and forced a second click to actually toggle.
+    if (activeEngine.isPlaying()) {
       activeEngine.pause()
-      // reflect intent immediately; the 'pause' event will confirm. Without
-      // this the flag could stay true and the next click read the wrong state.
       set({ playing: false })
     } else {
       set({ playing: true })

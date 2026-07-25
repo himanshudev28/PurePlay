@@ -81,6 +81,9 @@ export class HtmlAudioEngine implements PlaybackEngine {
   pause() {
     this.el.pause()
   }
+  isPlaying() {
+    return !this.el.paused && !this.el.ended
+  }
   seek(seconds: number) {
     this.el.currentTime = seconds
   }

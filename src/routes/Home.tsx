@@ -199,11 +199,11 @@ export default function Home() {
       <div aria-hidden className="pointer-events-none absolute top-1/3 -right-20 h-[420px] w-[420px] rounded-full bg-accent/15 blur-[150px]" />
 
       {/* Greeting & PurePlay Brand Banner */}
-      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-4">
+      <header className="flex animate-fade-up flex-col justify-between gap-3 border-b border-white/10 pb-4 sm:flex-row sm:items-center">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <span className="font-handwritten text-4xl sm:text-5xl font-bold tracking-wide text-white drop-shadow-[0_2px_10px_rgba(255,107,74,0.4)]">PurePlay</span>
-            <span className="rounded-full bg-accent/15 px-2.5 py-0.5 text-[10px] font-bold text-accent uppercase tracking-wider">Ad-Free</span>
+            <span className="font-handwritten text-4xl font-bold tracking-wide text-white drop-shadow-[0_2px_10px_rgba(255,107,74,0.4)] sm:text-5xl">PurePlay</span>
+            <span className="rounded-full bg-accent/15 px-2.5 py-0.5 text-[10px] font-bold tracking-wider text-accent uppercase">Ad-Free</span>
           </div>
           <p className="text-sm text-ink-300 sm:text-base">
             {hello} 👋 — Unlimited free music streaming without ads.
@@ -217,39 +217,58 @@ export default function Home() {
 
       {/* Hero — featured track */}
       {loading ? (
-        <Skeleton className="h-64 w-full rounded-3xl sm:h-80" />
+        <Skeleton className="h-72 w-full rounded-3xl sm:h-80" />
       ) : hero ? (
-        <section className="relative overflow-hidden rounded-3xl border border-white/10 shadow-2xl">
+        <section className="group relative animate-fade-up overflow-hidden rounded-3xl border border-white/10 shadow-2xl">
+          {/* Blurred artwork backdrop + accent glow */}
           <div aria-hidden className="absolute inset-0">
-            <Artwork src={hero.artwork} alt="" rounded="rounded-none" className="h-full w-full scale-105" />
-            <div className="absolute inset-0 bg-gradient-to-r from-ink-950 via-ink-950/85 to-transparent" />
+            <Artwork src={hero.artwork} alt="" rounded="rounded-none" className="h-full w-full scale-110 blur-[2px]" />
+            <div className="absolute inset-0 bg-gradient-to-r from-ink-950 via-ink-950/88 to-ink-950/35" />
             <div className="absolute inset-0 bg-gradient-to-t from-ink-950 via-transparent to-transparent" />
+            <div className="absolute -top-24 -right-12 h-72 w-72 rounded-full bg-accent/25 blur-[120px]" />
           </div>
 
-          <div className="relative flex min-h-[300px] flex-col justify-end px-6 py-12 sm:px-10 sm:py-16">
-            <p className="mb-3 flex w-fit items-center gap-2 rounded-full border border-accent/40 bg-accent/20 px-3 py-1 text-xs font-semibold text-accent-soft backdrop-blur-md">
-              <Sparkles size={13} aria-hidden />
-              Featured track
-            </p>
-            <h2 className="font-display line-clamp-2 max-w-2xl text-3xl leading-tight font-extrabold tracking-tight text-white sm:text-5xl [text-wrap:balance]">
-              {hero.title}
-            </h2>
-            <p className="mt-2 text-sm font-medium text-ink-200 sm:text-base">{hero.artist}</p>
+          {/* Drifting sheen */}
+          <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+            <div className="hero-sheen absolute inset-y-0 -left-1/3 w-1/3 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+          </div>
 
-            <div className="mt-6 flex flex-wrap items-center gap-3">
-              <Button size="lg" variant="accent" onClick={() => void playQueue(trending, 0)}>
-                <Play size={18} fill="currentColor" />
-                Play now
-              </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                onClick={() => void playShuffled(trending)}
-                disabled={!trending.length}
-              >
-                <Shuffle size={16} />
-                Shuffle
-              </Button>
+          <div className="relative flex min-h-[300px] items-center gap-6 px-6 py-10 sm:min-h-[340px] sm:px-10 sm:py-14">
+            {/* Crisp album art */}
+            <div className="hidden shrink-0 sm:block">
+              <Artwork
+                src={hero.artwork}
+                alt={hero.title}
+                rounded="rounded-2xl"
+                className="h-44 w-44 shadow-2xl ring-1 ring-white/15 transition-transform duration-500 group-hover:scale-105 glow-accent"
+              />
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <p className="mb-3 flex w-fit items-center gap-2 rounded-full border border-accent/40 bg-accent/20 px-3 py-1 text-xs font-semibold text-accent-soft backdrop-blur-md">
+                <Sparkles size={13} aria-hidden />
+                Featured track
+              </p>
+              <h2 className="font-display line-clamp-2 max-w-2xl text-3xl leading-tight font-extrabold tracking-tight text-white sm:text-5xl [text-wrap:balance]">
+                {hero.title}
+              </h2>
+              <p className="mt-2 truncate text-sm font-medium text-ink-200 sm:text-base">{hero.artist}</p>
+
+              <div className="mt-6 flex flex-wrap items-center gap-3">
+                <Button size="lg" variant="accent" onClick={() => void playQueue(trending, 0)}>
+                  <Play size={18} fill="currentColor" />
+                  Play now
+                </Button>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  onClick={() => void playShuffled(trending)}
+                  disabled={!trending.length}
+                >
+                  <Shuffle size={16} />
+                  Shuffle
+                </Button>
+              </div>
             </div>
           </div>
         </section>

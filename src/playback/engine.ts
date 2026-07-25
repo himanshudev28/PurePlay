@@ -25,6 +25,9 @@ export interface PlaybackEngine {
   load(track: Track): Promise<void>
   play(): Promise<void>
   pause(): void
+  /** The engine's real playing state — the source of truth for toggle(), which
+   *  can't trust the store flag if a media event was missed. */
+  isPlaying(): boolean
   seek(seconds: number): void
   setVolume(volume: number): void
   setMuted(muted: boolean): void
