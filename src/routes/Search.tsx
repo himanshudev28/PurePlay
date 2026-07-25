@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { Search as SearchIcon, Loader2, TrendingUp, Music, Mic2, Headphones, Guitar } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
-import type { SearchResults } from '@/types'
+import type { SearchResults, Track } from '@/types'
 import { source } from '@/services'
+import { ytmusic } from '@/services/ytmusic'
 import { TrackRow } from '@/components/TrackRow'
 import { ArtistCard, CollectionCard } from '@/components/Cards'
 import { SectionHeader, EmptyState, ErrorNote } from '@/components/ui'
@@ -26,6 +27,7 @@ export default function Search() {
   const initial = params.get('q') ?? ''
   const [query, setQuery] = useState(initial)
   const [results, setResults] = useState<SearchResults>(EMPTY)
+  const [ytTracks, setYtTracks] = useState<Track[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -39,6 +41,7 @@ export default function Search() {
     const q = query.trim()
     if (!q) {
       setResults(EMPTY)
+      setYtTracks([])
       setLoading(false)
       return
     }
@@ -52,6 +55,12 @@ export default function Search() {
       const tracksP = source.searchTracks
         ? source.searchTracks(q, 40, controller.signal).catch(() => null)
         : Promise.resolve(null)
+
+      // YouTube Music runs alongside (never rejects) for its larger catalog —
+      // its results play through the iframe engine, JioSaavn's in the background.
+      ytmusic.searchTracks(q, controller.signal).then((yt) => {
+        if (!controller.signal.aborted) setYtTracks(yt)
+      })
 
       Promise.all([source.search(q, controller.signal), tracksP])
         .then(([r, fullTracks]) => {
@@ -82,7 +91,8 @@ export default function Search() {
 
   // an error already explains itself — "No results" alongside it reads as if the
   // search succeeded and simply found nothing
-  const total = results.tracks.length + results.artists.length + results.collections.length
+  const total =
+    results.tracks.length + results.artists.length + results.collections.length + ytTracks.length
   const empty = !loading && !error && query.trim().length > 0 && total === 0
 
   return (
@@ -169,6 +179,20 @@ export default function Search() {
           <div className="space-y-0.5">
             {results.tracks.map((t, i) => (
               <TrackRow key={`${t.source}-${t.id}`} track={t} index={i} queue={results.tracks} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {ytTracks.length > 0 && (
+        <section>
+          <SectionHeader title="From YouTube Music" />
+          <p className="mb-3 -mt-3 text-xs text-ink-400">
+            A wider catalog — these play in the video player (not in the background).
+          </p>
+          <div className="space-y-0.5">
+            {ytTracks.map((t, i) => (
+              <TrackRow key={`yt-${t.id}`} track={t} index={i} queue={ytTracks} />
             ))}
           </div>
         </section>
