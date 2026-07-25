@@ -1,4 +1,5 @@
 {
+  "name": "pureplay",
   "files": [],
   "references": [
     { "path": "./tsconfig.app.json" },

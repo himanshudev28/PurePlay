@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Users, Copy, Check, Send, LogOut, Crown, Radio } from 'lucide-react'
+import { Users, Copy, Check, Send, LogOut, Crown, Radio, Pencil, Lock, Unlock } from 'lucide-react'
 import clsx from 'clsx'
 import { usePlayer } from '@/store/player'
 import { useRoom } from '@/store/room'
@@ -115,16 +115,28 @@ function RoomSession() {
   const members = useRoom((s) => s.members)
   const chat = useRoom((s) => s.chat)
   const isHost = useRoom((s) => s.isHost)
+  const controlMode = useRoom((s) => s.controlMode)
+  const canControl = useRoom((s) => s.canControl)
   const drift = useRoom((s) => s.drift)
   const myId = useRoom((s) => s.myId)
   const leave = useRoom((s) => s.leave)
   const sendChat = useRoom((s) => s.sendChat)
+  const setControlMode = useRoom((s) => s.setControlMode)
+  const setName = useRoom((s) => s.setName)
 
   const current = usePlayer((s) => s.current)
 
   const [draft, setDraft] = useState('')
   const [copied, setCopied] = useState(false)
+  const [editingName, setEditingName] = useState(false)
+  const [nameDraft, setNameDraft] = useState(name)
   const chatEnd = useRef<HTMLDivElement>(null)
+
+  const saveName = () => {
+    const n = nameDraft.trim()
+    if (n) setName(n)
+    setEditingName(false)
+  }
 
   useEffect(() => {
     chatEnd.current?.scrollIntoView({ behavior: 'smooth' })
@@ -196,13 +208,82 @@ function RoomSession() {
           />
         )}
 
+        {/* Who can control playback */}
+        <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-ink-800 bg-ink-900/60 p-4">
+          <div className="flex items-center gap-2.5 text-sm">
+            {controlMode === 'everyone' ? (
+              <Unlock size={17} className="shrink-0 text-accent" />
+            ) : (
+              <Lock size={17} className="shrink-0 text-ink-400" />
+            )}
+            <div>
+              <p className="font-medium text-white">
+                {controlMode === 'everyone' ? 'Everyone can control playback' : 'Only the host controls playback'}
+              </p>
+              <p className="text-xs text-ink-400">
+                {isHost
+                  ? 'Choose who can play, pause and change tracks for the room.'
+                  : canControl
+                    ? 'You can control playback for everyone.'
+                    : 'The host is in charge of playback.'}
+              </p>
+            </div>
+          </div>
+          {isHost && (
+            <div className="flex shrink-0 items-center gap-1 rounded-full bg-ink-850 p-1">
+              {(['host', 'everyone'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => setControlMode(mode)}
+                  aria-pressed={controlMode === mode}
+                  className={clsx(
+                    'rounded-full px-3 py-1.5 text-xs font-semibold transition',
+                    controlMode === mode ? 'bg-accent text-ink-950' : 'text-ink-300 hover:text-white',
+                  )}
+                >
+                  {mode === 'host' ? 'Host only' : 'Everyone'}
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+
         <section>
           <h3 className="mb-3 text-sm font-semibold text-white">In the room · {members.length + 1}</h3>
           <div className="flex flex-wrap gap-2">
-            <span className="flex items-center gap-1.5 rounded-full bg-ink-800 px-3 py-1.5 text-xs text-white">
-              {isHost && <Crown size={11} className="text-accent" />}
-              {name || 'You'} (you)
-            </span>
+            {editingName ? (
+              <span className="flex items-center gap-1 rounded-full bg-ink-800 py-1 pr-1 pl-3">
+                <input
+                  autoFocus
+                  value={nameDraft}
+                  onChange={(e) => setNameDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') saveName()
+                    if (e.key === 'Escape') setEditingName(false)
+                  }}
+                  onBlur={saveName}
+                  maxLength={24}
+                  aria-label="Your name"
+                  className="w-28 bg-transparent text-xs text-white focus:outline-none"
+                />
+                <button onClick={saveName} className="rounded-full p-1 text-accent hover:bg-ink-700" aria-label="Save name">
+                  <Check size={12} />
+                </button>
+              </span>
+            ) : (
+              <button
+                onClick={() => {
+                  setNameDraft(name)
+                  setEditingName(true)
+                }}
+                className="group flex items-center gap-1.5 rounded-full bg-ink-800 px-3 py-1.5 text-xs text-white hover:bg-ink-700"
+                title="Change your name"
+              >
+                {isHost && <Crown size={11} className="text-accent" />}
+                {name || 'You'} (you)
+                <Pencil size={11} className="text-ink-400 group-hover:text-white" />
+              </button>
+            )}
             {members.map((m) => (
               <span key={m.id} className="rounded-full bg-ink-800 px-3 py-1.5 text-xs text-ink-300">
                 {m.name}

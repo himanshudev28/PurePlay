@@ -25,14 +25,23 @@ export interface RoomMember {
   isHost: boolean
 }
 
+/** Who may drive playback: the host alone, or anyone in the room. */
+export type ControlMode = 'host' | 'everyone'
+
 export type RoomMessage =
   | { type: 'join'; member: RoomMember; at: number }
   | { type: 'leave'; memberId: string; at: number }
   | { type: 'members'; members: RoomMember[]; at: number }
-  /** authoritative playback state from the host */
-  | { type: 'state'; track: Track | null; position: number; playing: boolean; at: number }
-  /** a follower asking the host to re-broadcast (sent on join) */
+  /** playback state — `by` is the member who broadcast it, so it isn't echoed */
+  | { type: 'state'; track: Track | null; position: number; playing: boolean; by: string; at: number }
+  /** a member asking whoever's in control to re-broadcast (sent on join) */
   | { type: 'sync-request'; memberId: string; at: number }
+  /** host announces who's allowed to control playback */
+  | { type: 'control-mode'; mode: ControlMode; at: number }
+  /** a member changed their display name */
+  | { type: 'rename'; memberId: string; name: string; at: number }
+  /** host removed a member from the room */
+  | { type: 'kick'; memberId: string; at: number }
   | { type: 'chat'; memberId: string; name: string; text: string; at: number }
 
 type Handler = (msg: RoomMessage) => void
