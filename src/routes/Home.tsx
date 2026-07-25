@@ -18,10 +18,10 @@ const CATEGORIES = [
   { label: '🌟 Top 50 Hindi', query: 'Top 50 Hindi', icon: Sparkles },
 ]
 
-/** Canonical artists for the "Popular artists" row — one clean result each. */
+/** Canonical artists for the "Popular artists" row — one clean result each.
+ *  Kept short to stay light on the rate-limited public API. */
 const ARTIST_SEEDS = [
-  'Arijit Singh', 'Diljit Dosanjh', 'Shreya Ghoshal', 'A.R. Rahman',
-  'Neha Kakkar', 'Badshah', 'Pritam', 'Yo Yo Honey Singh',
+  'Arijit Singh', 'Diljit Dosanjh', 'Shreya Ghoshal', 'A.R. Rahman', 'Neha Kakkar', 'Badshah',
 ]
 
 /** Genre/mood → curated playlist shelves (JioSaavn editorial playlists). */
@@ -30,8 +30,6 @@ const PLAYLIST_SHELVES = [
   { title: 'Punjabi playlists', query: 'Punjabi' },
   { title: 'Pop playlists', query: 'Pop' },
   { title: 'Romance', query: 'Romantic Hindi' },
-  { title: 'Hip-hop & rap', query: 'Hip Hop' },
-  { title: 'Lo-fi & chill', query: 'Lofi' },
 ]
 
 /** Genre → song shelves. */

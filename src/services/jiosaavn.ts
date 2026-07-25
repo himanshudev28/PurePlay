@@ -5,6 +5,71 @@ import { getQuality, type Quality } from '@/lib/prefs'
 
 const API_BASE = 'https://saavn.sumit.co/api'
 
+/*
+  The public JioSaavn API rate-limits bursts with HTTP 429 — and a home page of
+  shelves fires ~25 requests at once. Its 429 responses also omit CORS headers,
+  so in the browser a throttled request surfaces as an opaque "Failed to fetch".
+
+  apiFetch is a drop-in for fetch() that:
+    • caps concurrency so we never fire the whole burst at once,
+    • retries 429s (and transient network failures) with backoff + jitter,
+    • caches successful GETs briefly, so re-renders and back-navigation are free.
+*/
+const MAX_CONCURRENT = 2
+let activeRequests = 0
+const waiting: Array<() => void> = []
+const acquire = () =>
+  activeRequests < MAX_CONCURRENT
+    ? ((activeRequests++), Promise.resolve())
+    : new Promise<void>((r) => waiting.push(() => ((activeRequests++), r())))
+const release = () => {
+  activeRequests--
+  waiting.shift()?.()
+}
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+const CACHE_TTL = 5 * 60 * 1000
+const responseCache = new Map<string, { at: number; body: string; status: number }>()
+
+async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
+  const cacheable = !init?.method || init.method === 'GET'
+  if (cacheable) {
+    const hit = responseCache.get(url)
+    if (hit && Date.now() - hit.at < CACHE_TTL) return new Response(hit.body, { status: hit.status })
+  }
+
+  await acquire()
+  try {
+    for (let attempt = 0; ; attempt++) {
+      if (init?.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+      const backoff = () => sleep(500 * (attempt + 1) + Math.random() * 300)
+      try {
+        const res = await fetch(url, init)
+        if (res.status === 429 && attempt < 3) {
+          await backoff()
+          continue
+        }
+        if (cacheable && res.ok) {
+          const body = await res.text()
+          responseCache.set(url, { at: Date.now(), body, status: res.status })
+          return new Response(body, { status: res.status })
+        }
+        return res
+      } catch (e) {
+        // AbortError is intentional; anything else (network / CORS-less 429) retries
+        if (e instanceof DOMException && e.name === 'AbortError') throw e
+        if (attempt < 3) {
+          await backoff()
+          continue
+        }
+        throw e
+      }
+    }
+  } finally {
+    release()
+  }
+}
+
 interface RawImage { quality: string; url: string }
 interface RawDownloadUrl { quality: string; url: string }
 interface RawArtistRef { id: string; name: string; role?: string; image?: RawImage[] }
@@ -130,7 +195,7 @@ export const jiosaavnSource: MusicSource = {
     // very first paint of the app wait on five round-trips stacked end to end.
     const settled = await Promise.allSettled(
       categories.map(async (cat) => {
-        const res = await fetch(`${API_BASE}/search/songs?query=${encodeURIComponent(cat)}&limit=15`)
+        const res = await apiFetch(`${API_BASE}/search/songs?query=${encodeURIComponent(cat)}&limit=15`)
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const json = await res.json()
         return (json.data?.results || json.data || []) as RawSong[]
@@ -172,7 +237,7 @@ export const jiosaavnSource: MusicSource = {
   async search(query: string, signal?: AbortSignal): Promise<SearchResults> {
     const q = encodeURIComponent(query.trim())
     try {
-      const res = await fetch(`${API_BASE}/search?query=${q}`, { signal })
+      const res = await apiFetch(`${API_BASE}/search?query=${q}`, { signal })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const json = await res.json()
       const data = json.data || {}
@@ -202,7 +267,7 @@ export const jiosaavnSource: MusicSource = {
    * anything that needs a real list of tracks has to come through here.
    */
   async searchTracks(query: string, limit = 30, signal?: AbortSignal): Promise<Track[]> {
-    const res = await fetch(
+    const res = await apiFetch(
       `${API_BASE}/search/songs?query=${encodeURIComponent(query.trim())}&limit=${limit}`,
       { signal },
     )
@@ -214,7 +279,7 @@ export const jiosaavnSource: MusicSource = {
 
   /** Curated playlists for a genre/mood term — the backbone of the discovery shelves. */
   async searchPlaylists(query: string, limit = 10, signal?: AbortSignal): Promise<Collection[]> {
-    const res = await fetch(
+    const res = await apiFetch(
       `${API_BASE}/search/playlists?query=${encodeURIComponent(query.trim())}&limit=${limit}`,
       { signal },
     )
@@ -225,7 +290,7 @@ export const jiosaavnSource: MusicSource = {
   },
 
   async searchArtists(query: string, limit = 10, signal?: AbortSignal): Promise<Artist[]> {
-    const res = await fetch(
+    const res = await apiFetch(
       `${API_BASE}/search/artists?query=${encodeURIComponent(query.trim())}&limit=${limit}`,
       { signal },
     )
@@ -237,7 +302,7 @@ export const jiosaavnSource: MusicSource = {
 
   async track(id: string): Promise<Track | null> {
     try {
-      const res = await fetch(`${API_BASE}/songs/${id}`)
+      const res = await apiFetch(`${API_BASE}/songs/${id}`)
       if (!res.ok) return null
       const json = await res.json()
       const raw = json.data?.[0] as RawSong | undefined
@@ -249,7 +314,7 @@ export const jiosaavnSource: MusicSource = {
 
   async artist(id: string): Promise<{ artist: Artist; tracks: Track[] } | null> {
     try {
-      const res = await fetch(`${API_BASE}/artists/${id}`)
+      const res = await apiFetch(`${API_BASE}/artists/${id}`)
       if (!res.ok) return null
       const json = await res.json()
       const data = json.data as RawArtist | undefined
@@ -265,9 +330,9 @@ export const jiosaavnSource: MusicSource = {
     try {
       // try album first, then playlist
       let kind: 'album' | 'playlist' = 'album'
-      let res = await fetch(`${API_BASE}/albums?id=${id}`)
+      let res = await apiFetch(`${API_BASE}/albums?id=${id}`)
       if (!res.ok) {
-        res = await fetch(`${API_BASE}/playlists?id=${id}`)
+        res = await apiFetch(`${API_BASE}/playlists?id=${id}`)
         kind = 'playlist'
       }
       if (!res.ok) return null
@@ -294,7 +359,7 @@ export const jiosaavnSource: MusicSource = {
 
     const settled = await Promise.allSettled(
       seeds.map(async (seed) => {
-        const res = await fetch(
+        const res = await apiFetch(
           `${API_BASE}/search/albums?query=${encodeURIComponent(seed)}&limit=${perSeed}`,
         )
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -322,7 +387,7 @@ export const jiosaavnSource: MusicSource = {
   async streamUrl(track: Track): Promise<string> {
     try {
       // fetch song details to get the high quality direct audio URL
-      const res = await fetch(`${API_BASE}/songs/${track.id}`)
+      const res = await apiFetch(`${API_BASE}/songs/${track.id}`)
       if (!res.ok) throw new Error('Song details unavailable')
       const json = await res.json()
       const raw = json.data?.[0] as RawSong | undefined
