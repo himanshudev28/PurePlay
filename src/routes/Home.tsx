@@ -3,6 +3,7 @@ import { Play, Sparkles, Flame, Music, Heart, Headphones, Radio, ListMusic, Shuf
 import clsx from 'clsx'
 import type { Track, Collection, Artist } from '@/types'
 import { source } from '@/services'
+import { ytmusic } from '@/services/ytmusic'
 import { usePlayer } from '@/store/player'
 import { useLibrary } from '@/store/library'
 import { TrackCard, CollectionCard, ArtistCard } from '@/components/Cards'
@@ -58,6 +59,23 @@ function leadArtist(name: string): string {
   return name.split(/,|&|\bfeat\.?\b|\bft\.?\b|\bwith\b/i)[0]?.trim() ?? ''
 }
 
+/**
+ * Songs for a query — JioSaavn first (background-capable audio), falling back to
+ * YouTube Music when the JioSaavn mirrors are rate-limited or down. Keeps the
+ * home populated even when the primary catalog is unavailable.
+ */
+async function discoverTracks(query: string, limit: number): Promise<Track[]> {
+  try {
+    const t = source.searchTracks
+      ? await source.searchTracks(query, limit)
+      : (await source.search(query)).tracks
+    if (t.length) return t
+  } catch {
+    /* JioSaavn unavailable — fall through to YouTube Music */
+  }
+  return ytmusic.searchTracks(query).catch(() => [])
+}
+
 export default function Home() {
   const [trending, setTrending] = useState<Track[]>([])
   const [collections, setCollections] = useState<Collection[]>([])
@@ -87,15 +105,11 @@ export default function Home() {
     setError(null)
     setActiveCategory(catQuery)
 
-    // /search caps at 3 songs; searchTracks (/search/songs) returns a real list.
-    const tracksP = source.searchTracks
-      ? source.searchTracks(catQuery, 40)
-      : source.search(catQuery).then((r) => r.tracks)
-
-    Promise.all([tracksP, source.featuredCollections(12).catch(() => [])])
+    Promise.all([discoverTracks(catQuery, 40), source.featuredCollections(12).catch(() => [])])
       .then(([t, c]) => {
         setTrending(t.slice(0, 40))
         if (c.length > 0) setCollections(c)
+        setError(t.length ? null : 'Could not load the catalog')
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
@@ -104,10 +118,16 @@ export default function Home() {
   useEffect(() => {
     setLoading(true)
     setError(null)
-    Promise.all([source.trending(40), source.featuredCollections(12).catch(() => [])])
+    // trending() can fail hard when the JioSaavn mirrors are down; fall back to
+    // YouTube Music so the home still fills instead of showing a bare error.
+    Promise.all([
+      source.trending(40).catch(() => discoverTracks('trending songs', 40)),
+      source.featuredCollections(12).catch(() => []),
+    ])
       .then(([t, c]) => {
         setTrending(t)
         setCollections(c)
+        setError(t.length ? null : 'Could not load the catalog')
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
@@ -143,18 +163,13 @@ export default function Home() {
       })
     }
 
-    const songFetch = source.searchTracks
-    if (songFetch) {
-      void Promise.all(
-        SONG_SHELVES.map((s) =>
-          songFetch(s.query, 20)
-            .then((items) => ({ title: s.title, items }))
-            .catch(() => ({ title: s.title, items: [] as Track[] })),
-        ),
-      ).then((shelves) => {
-        if (active) setSongShelves(shelves.filter((s) => s.items.length > 0))
-      })
-    }
+    void Promise.all(
+      SONG_SHELVES.map((s) =>
+        discoverTracks(s.query, 20).then((items) => ({ title: s.title, items })),
+      ),
+    ).then((shelves) => {
+      if (active) setSongShelves(shelves.filter((s) => s.items.length > 0))
+    })
 
     return () => {
       active = false
@@ -168,16 +183,9 @@ export default function Home() {
       return
     }
     let active = true
-    const p = source.searchTracks
-      ? source.searchTracks(tasteArtist, 12)
-      : source.search(tasteArtist).then((r) => r.tracks)
-    void p
-      .then((tracks) => {
-        if (active) setForYou(tracks.slice(0, 12))
-      })
-      .catch(() => {
-        /* the rest of the page is unaffected by a missing taste shelf */
-      })
+    void discoverTracks(tasteArtist, 12).then((tracks) => {
+      if (active) setForYou(tracks.slice(0, 12))
+    })
     return () => {
       active = false
     }
