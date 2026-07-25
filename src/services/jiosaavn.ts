@@ -382,23 +382,35 @@ export const jiosaavnSource: MusicSource = {
   },
 
   async collection(id: string): Promise<{ collection: Collection; tracks: Track[] } | null> {
-    try {
-      // try album first, then playlist
-      let kind: 'album' | 'playlist' = 'album'
-      let res = await apiFetch(`${API_BASE}/albums?id=${id}`)
-      if (!res.ok) {
-        res = await apiFetch(`${API_BASE}/playlists?id=${id}`)
-        kind = 'playlist'
+    // An id may be an album OR a playlist, and the API returns 200 for the wrong
+    // kind too — just with no songs. So `res.ok` can't decide which it is; fetch
+    // both and keep whichever actually has tracks. (This was the "playlist is
+    // empty" bug: /albums?id=<playlistId> 200s empty, so we never tried
+    // /playlists?id=.)
+    const fetchKind = async (
+      path: 'albums' | 'playlists',
+      kind: 'album' | 'playlist',
+    ): Promise<{ collection: Collection; tracks: Track[] } | null> => {
+      try {
+        const res = await apiFetch(`${API_BASE}/${path}?id=${encodeURIComponent(id)}&limit=100`)
+        if (!res.ok) return null
+        const data = (await res.json()).data as RawAlbum | undefined
+        if (!data) return null
+        return { collection: toCollection(data, kind), tracks: (data.songs || []).map(toTrack) }
+      } catch {
+        return null
       }
-      if (!res.ok) return null
-      const json = await res.json()
-      const data = json.data as RawAlbum | undefined
-      if (!data) return null
-      const tracks = (data.songs || []).map(toTrack)
-      return { collection: toCollection(data, kind), tracks }
-    } catch {
-      return null
     }
+
+    const album = await fetchKind('albums', 'album')
+    if (album?.tracks.length) return album
+
+    const playlist = await fetchKind('playlists', 'playlist')
+    if (playlist?.tracks.length) return playlist
+
+    // Neither had songs — return whatever metadata we got (so the header still
+    // renders) rather than a hard "not found".
+    return playlist ?? album
   },
 
   /*
