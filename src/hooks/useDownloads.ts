@@ -24,12 +24,16 @@ export function useDownloads(track: Track | null) {
 
   const resetTimer = useRef<number | null>(null)
   const mounted = useRef(true)
+  const controller = useRef<AbortController | null>(null)
 
   useEffect(() => {
     mounted.current = true
     return () => {
       mounted.current = false
       if (resetTimer.current) clearTimeout(resetTimer.current)
+      // stop the transfer, not just the progress UI — without this a multi-MB
+      // fetch kept running to completion after the row unmounted
+      controller.current?.abort()
     }
   }, [])
 
@@ -65,14 +69,16 @@ export function useDownloads(track: Track | null) {
     inFlight.add(key)
     setStatus('downloading')
     setProgress(0)
+    controller.current = new AbortController()
     try {
       const src = sourceFor(track.source)
       // downloadUrl when the adapter distinguishes them (see MusicSource docs)
       const url = await (src.downloadUrl ? src.downloadUrl(track) : src.streamUrl(track))
-      await saveDownload(track, url, (p) => mounted.current && setProgress(p))
+      await saveDownload(track, url, (p) => mounted.current && setProgress(p), controller.current.signal)
       if (mounted.current) setStatus('done')
       notify()
     } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') return
       // Swallowing this entirely makes a failed download indistinguishable from
       // one that never started — surface it rather than failing invisibly.
       const message = e instanceof Error ? e.message : 'Download failed'

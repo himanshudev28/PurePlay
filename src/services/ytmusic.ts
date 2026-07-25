@@ -1,4 +1,5 @@
 import type { Track } from '@/types'
+import { withTimeout } from '@/lib/net'
 
 /**
  * YouTube Music discovery, via our server bridge (see api/ytmusic.ts).
@@ -31,10 +32,26 @@ function bestThumbnail(thumbs?: YtThumbnail[]): string | undefined {
   return thumbs[thumbs.length - 1]?.url
 }
 
+/** Warn once instead of silently returning [] forever — in `vite dev` there is
+ *  no serverless runtime, so /api/ytmusic answers with the SPA's index.html. */
+let warnedNotJson = false
+
 async function call<T>(action: string, q: string, signal?: AbortSignal): Promise<T[]> {
   try {
-    const res = await fetch(`${BASE}?action=${action}&q=${encodeURIComponent(q.trim())}`, { signal })
+    const res = await fetch(`${BASE}?action=${action}&q=${encodeURIComponent(q.trim())}`, {
+      signal: withTimeout(signal),
+    })
     if (!res.ok) return []
+    if (!res.headers.get('content-type')?.includes('json')) {
+      if (!warnedNotJson) {
+        warnedNotJson = true
+        console.warn(
+          '[ytmusic] The bridge at %s returned non-JSON — in local dev the serverless function is not running (use `vercel dev`), so YouTube Music discovery is disabled.',
+          BASE,
+        )
+      }
+      return []
+    }
     const json = (await res.json()) as { data?: T[] }
     return json.data ?? []
   } catch {

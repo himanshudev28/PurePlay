@@ -1,4 +1,5 @@
-import { Heart, Play, Pause, Download, Check, Loader2, ListPlus, Trash2 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Heart, Play, Pause, Download, Check, Loader2, ListPlus, ListMusic, Plus, Trash2 } from 'lucide-react'
 import clsx from 'clsx'
 import type { Track } from '@/types'
 import { usePlayer } from '@/store/player'
@@ -7,6 +8,104 @@ import { useDownloads } from '@/hooks/useDownloads'
 import { formatDuration } from '@/lib/format'
 import { Artwork, NowPlayingBars } from './ui'
 import { keyOf } from '@/lib/db'
+
+/**
+ * The playlist feature's missing half: the store could create playlists and
+ * remove tracks, but no control anywhere ADDED one — every playlist was
+ * permanently empty while its empty state said "add songs from search".
+ */
+function AddToPlaylistMenu({ track }: { track: Track }) {
+  const playlists = useLibrary((s) => s.playlists)
+  const addToPlaylist = useLibrary((s) => s.addToPlaylist)
+  const createPlaylist = useLibrary((s) => s.createPlaylist)
+  const [open, setOpen] = useState(false)
+  const [addedTo, setAddedTo] = useState<string | null>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onPointer = (e: PointerEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('pointerdown', onPointer)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('pointerdown', onPointer)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  const add = (playlistId: string) => {
+    addToPlaylist(playlistId, track)
+    setAddedTo(playlistId)
+    setTimeout(() => {
+      setOpen(false)
+      setAddedTo(null)
+    }, 700)
+  }
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        title="Add to playlist"
+        aria-label={`Add ${track.title} to a playlist`}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        className={clsx(
+          'rounded-full p-2 transition hover:bg-ink-700 hover:text-white',
+          open
+            ? 'text-white'
+            : 'text-ink-400 opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
+        )}
+      >
+        <ListMusic size={15} />
+      </button>
+      {open && (
+        <div
+          role="menu"
+          aria-label="Add to playlist"
+          className="absolute top-full right-0 z-50 mt-1 w-52 rounded-xl border border-ink-700 bg-ink-900 p-1 shadow-2xl"
+        >
+          <button
+            role="menuitem"
+            onClick={() => {
+              const name = window.prompt('Name the new playlist:')
+              if (name?.trim()) add(createPlaylist(name.trim()))
+            }}
+            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-medium text-white hover:bg-ink-800"
+          >
+            <Plus size={13} /> New playlist
+          </button>
+          {playlists.length > 0 && <div className="mx-2 my-1 h-px bg-ink-800" aria-hidden />}
+          {playlists.map((p) => {
+            const alreadyIn = p.tracks.some((t) => keyOf(t) === keyOf(track))
+            return (
+              <button
+                key={p.id}
+                role="menuitem"
+                onClick={() => add(p.id)}
+                disabled={alreadyIn}
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-ink-200 hover:bg-ink-800 disabled:cursor-default disabled:opacity-50"
+              >
+                {addedTo === p.id || alreadyIn ? (
+                  <Check size={13} className="shrink-0 text-accent" />
+                ) : (
+                  <ListMusic size={13} className="shrink-0 text-ink-400" />
+                )}
+                <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                <span className="shrink-0 text-[10px] tabular-nums text-ink-400">{p.tracks.length}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export function TrackRow({
   track,
@@ -131,6 +230,8 @@ export function TrackRow({
             )}
           </button>
         )}
+
+        <AddToPlaylistMenu track={track} />
 
         {onRemove ? (
           <button

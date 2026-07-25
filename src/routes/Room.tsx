@@ -5,6 +5,7 @@ import clsx from 'clsx'
 import { usePlayer } from '@/store/player'
 import { useRoom } from '@/store/room'
 import { generateRoomCode, DRIFT_DEADZONE } from '@/lib/room'
+import { copyText } from '@/lib/clipboard'
 import { Button, EmptyState, Artwork } from '@/components/ui'
 
 export default function Room() {
@@ -46,6 +47,20 @@ export default function Room() {
     )
   }
   return <RoomSession />
+}
+
+/**
+ * Leaving must ALSO drop `?id=` from the URL — with the invite id still there
+ * and a saved name, the auto-rejoin effect above fires the instant `roomId`
+ * turns null and pulls the user straight back into the room they just left.
+ */
+function useLeaveRoom() {
+  const [, setParams] = useSearchParams()
+  const leave = useRoom((s) => s.leave)
+  return () => {
+    leave()
+    setParams({}, { replace: true })
+  }
 }
 
 function RoomLobby({
@@ -141,7 +156,7 @@ function RoomSession() {
   const canControl = useRoom((s) => s.canControl)
   const drift = useRoom((s) => s.drift)
   const myId = useRoom((s) => s.myId)
-  const leave = useRoom((s) => s.leave)
+  const leave = useLeaveRoom()
   const sendChat = useRoom((s) => s.sendChat)
   const setControlMode = useRoom((s) => s.setControlMode)
   const setName = useRoom((s) => s.setName)
@@ -155,7 +170,16 @@ function RoomSession() {
   const [nameDraft, setNameDraft] = useState(name)
   const chatEnd = useRef<HTMLDivElement>(null)
 
+  // Set before the input unmounts so its blur (which fires during unmount)
+  // knows the edit was cancelled — otherwise Escape still committed the draft.
+  const discardNameEdit = useRef(false)
+
   const saveName = () => {
+    if (discardNameEdit.current) {
+      discardNameEdit.current = false
+      setEditingName(false)
+      return
+    }
     const n = nameDraft.trim()
     if (n) setName(n)
     setEditingName(false)
@@ -172,9 +196,11 @@ function RoomSession() {
   }
 
   const copyLink = () => {
-    void navigator.clipboard.writeText(`${location.origin}/room?id=${roomId}`)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1800)
+    void copyText(`${location.origin}/room?id=${roomId}`).then((ok) => {
+      if (!ok) return
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1800)
+    })
   }
 
   return (
@@ -282,7 +308,10 @@ function RoomSession() {
                   onChange={(e) => setNameDraft(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') saveName()
-                    if (e.key === 'Escape') setEditingName(false)
+                    if (e.key === 'Escape') {
+                      discardNameEdit.current = true
+                      setEditingName(false)
+                    }
                   }}
                   onBlur={saveName}
                   maxLength={24}
@@ -365,6 +394,8 @@ function RoomSession() {
           <button
             onClick={submit}
             disabled={!draft.trim()}
+            aria-label="Send message"
+            title="Send message"
             className="rounded-full bg-accent p-2.5 text-ink-950 transition hover:bg-accent-soft disabled:opacity-40"
           >
             <Send size={15} />

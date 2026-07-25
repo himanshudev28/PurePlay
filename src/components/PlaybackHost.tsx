@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import type { Track } from '@/types'
 import { usePlayer, syncMediaPosition } from '@/store/player'
 import { useLibrary } from '@/store/library'
 import { initEngines, engineFor } from '@/playback'
@@ -43,11 +44,17 @@ export function PlaybackHost() {
     engineFor('youtube')?.attach(callbacks)
   }, [sync, next])
 
-  // record plays into "recently played" once a track actually starts
+  // Record plays into "recently played" once a track actually starts. Keyed on
+  // the track, not the playing flag alone — otherwise every pause/resume
+  // re-pushed the same track to the top of the list.
   const current = usePlayer((s) => s.current)
   const playing = usePlayer((s) => s.playing)
+  const lastRecorded = useRef<Track | null>(null)
   useEffect(() => {
-    if (current && playing) pushRecent(current)
+    if (current && playing && lastRecorded.current !== current) {
+      lastRecorded.current = current
+      pushRecent(current)
+    }
   }, [current, playing, pushRecent])
 
   // keep the OS lock screen / media keys showing the right play-pause state
@@ -62,8 +69,9 @@ export function PlaybackHost() {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement
       if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable) return
-      // the YouTube iframe handles its own keys once focused
-      if (el.tagName === 'IFRAME') return
+      // Space on a focused button/link must activate that control, not also
+      // toggle playback underneath it
+      if (e.code === 'Space' && (el.tagName === 'BUTTON' || el.tagName === 'A' || el.tagName === 'SELECT')) return
 
       const p = usePlayer.getState()
       if (e.code === 'Space') {

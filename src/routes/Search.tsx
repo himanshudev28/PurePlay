@@ -33,8 +33,18 @@ export default function Search() {
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    inputRef.current?.focus()
+    // Don't pop the mobile keyboard when arriving via a shared ?q= link —
+    // the visitor wants to read results, not retype the query.
+    if (!initial) inputRef.current?.focus()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Back/forward changes ?q= without going through the input — resync it, or
+  // the visible query and the visible results disagree after a back navigation.
+  useEffect(() => {
+    setQuery((prev) => (prev.trim() === initial.trim() ? prev : initial))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initial])
 
   // debounced search; an in-flight request is aborted when the query changes
   useEffect(() => {
@@ -43,8 +53,16 @@ export default function Search() {
       setResults(EMPTY)
       setYtTracks([])
       setLoading(false)
+      setError(null)
       return
     }
+
+    // Clear the previous query's results and error up front — otherwise stale
+    // rows sit under the new query for the debounce+network window, and a
+    // stale error banner outlives the search that caused it.
+    setResults(EMPTY)
+    setYtTracks([])
+    setError(null)
 
     const controller = new AbortController()
     setLoading(true)

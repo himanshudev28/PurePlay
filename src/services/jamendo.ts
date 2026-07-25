@@ -1,6 +1,7 @@
 import type { MusicSource } from './source'
 import { SourceError } from './source'
 import type { Track, Artist, Collection } from '@/types'
+import { withTimeout } from '@/lib/net'
 
 const BASE = 'https://api.jamendo.com/v3.0'
 const CLIENT_ID = import.meta.env.VITE_JAMENDO_CLIENT_ID as string | undefined
@@ -20,7 +21,7 @@ async function api<T>(path: string, params: Record<string, string | number> = {}
     format: 'json',
     ...Object.fromEntries(Object.entries(params).map(([k, v]) => [k, String(v)])),
   })
-  const res = await fetch(`${BASE}${path}?${qs}`, { signal })
+  const res = await fetch(`${BASE}${path}?${qs}`, { signal: withTimeout(signal) })
   if (!res.ok) throw new SourceError(`Jamendo HTTP ${res.status}`)
   const json = (await res.json()) as { results?: T; headers?: { error_message?: string } }
   if (json.headers?.error_message) throw new SourceError(json.headers.error_message)

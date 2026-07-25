@@ -1,6 +1,7 @@
 import type { MusicSource } from './source'
 import { SourceError } from './source'
 import type { Track, Artist, Collection } from '@/types'
+import { withTimeout } from '@/lib/net'
 
 const BASE = 'https://www.googleapis.com/youtube/v3'
 const KEY = import.meta.env.VITE_YOUTUBE_API_KEY as string | undefined
@@ -33,7 +34,7 @@ function requireKey(): string {
 
 async function api<T>(path: string, params: Record<string, string>, signal?: AbortSignal): Promise<T> {
   const qs = new URLSearchParams({ key: requireKey(), ...params })
-  const res = await fetch(`${BASE}${path}?${qs}`, { signal })
+  const res = await fetch(`${BASE}${path}?${qs}`, { signal: withTimeout(signal) })
 
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as {

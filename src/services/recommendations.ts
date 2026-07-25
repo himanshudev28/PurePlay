@@ -9,6 +9,15 @@ function leadArtist(artist: string): string {
 }
 
 /**
+ * The same recording is often indexed under several ids across sources and
+ * compilations, so `keyOf` (source:id) misses obvious duplicates. Fold to
+ * title + lead artist for cross-query dedupe instead.
+ */
+export function identityOf(t: Track): string {
+  return `${t.title.trim().toLowerCase()}::${leadArtist(t.artist).toLowerCase()}`
+}
+
+/**
  * Pull a page of songs for one query.
  *
  * Prefers the adapter's songs-only endpoint. The combined `search()` caps each
@@ -81,13 +90,22 @@ export async function getMatchingRecommendations(track: Track, limit = 20): Prom
   const settled = await Promise.allSettled(unique.map((q) => songsFor(q, limit)))
   const lists = settled.flatMap((o) => (o.status === 'fulfilled' ? [o.value] : []))
 
+  // Every query failing means the catalog is unreachable, not that this seed
+  // is exhausted. Throw so the caller retries later instead of writing the
+  // seed off permanently.
+  if (!lists.length && unique.length) {
+    throw new Error('Recommendations are unavailable right now')
+  }
+
   const out: Track[] = []
-  const seen = new Set<string>([keyOf(track)])
+  const seen = new Set<string>([keyOf(track), identityOf(track)])
   for (const t of interleave(lists)) {
     if (out.length >= limit) break
     const k = keyOf(t)
-    if (seen.has(k)) continue
+    const id = identityOf(t)
+    if (seen.has(k) || seen.has(id)) continue
     seen.add(k)
+    seen.add(id)
     out.push(t)
   }
   return out

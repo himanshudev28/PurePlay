@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type { Track } from '@/types'
 import { keyOf } from '@/lib/db'
 import { engineFor, isFromCache, type PlaybackEngine } from '@/playback'
-import { getMatchingRecommendations } from '@/services/recommendations'
+import { getMatchingRecommendations, identityOf } from '@/services/recommendations'
 import { getVolume, setVolume as persistVolume } from '@/lib/prefs'
 
 /**
@@ -48,6 +48,12 @@ interface PlayerState {
   /** start a list at a random track *and* turn shuffle on for what follows */
   playShuffled: (tracks: Track[]) => Promise<void>
   toggle: () => void
+  /** idempotent: resume only if the engine is actually paused */
+  play: () => void
+  /** idempotent: pause only if the engine is actually playing */
+  pause: () => void
+  /** jump to a queue position without resetting the queue or history */
+  jumpTo: (index: number) => Promise<void>
   next: (auto?: boolean) => Promise<void>
   prev: () => Promise<void>
   seek: (seconds: number) => void
@@ -97,6 +103,14 @@ let loadSeq = 0
  * after any removal.
  */
 const history: string[] = []
+
+/** Keep `prev` useful without letting a long radio session grow this forever. */
+const HISTORY_MAX = 100
+
+function pushHistory(key: string) {
+  history.push(key)
+  if (history.length > HISTORY_MAX) history.splice(0, history.length - HISTORY_MAX)
+}
 
 /**
  * The volume slider only renders at md and up (see PlayerBar), so on a phone the
@@ -186,17 +200,31 @@ export const usePlayer = create<PlayerState>((set, get) => ({
     // Trust the ENGINE's real state, not the store flag — a missed 'play'/'pause'
     // media event could leave the flag stale, which made the first click a no-op
     // (it only "fixed" the flag) and forced a second click to actually toggle.
-    if (activeEngine.isPlaying()) {
-      activeEngine.pause()
-      set({ playing: false })
-    } else {
-      set({ playing: true })
-      // a successful play means any previous failure is no longer relevant
-      void activeEngine
-        .play()
-        .then(() => set({ error: null }))
-        .catch((e: Error) => set({ error: e.message, playing: false }))
-    }
+    if (activeEngine.isPlaying()) get().pause()
+    else get().play()
+  },
+
+  play() {
+    if (!activeEngine || !get().current || activeEngine.isPlaying()) return
+    set({ playing: true })
+    // a successful play means any previous failure is no longer relevant
+    void activeEngine
+      .play()
+      .then(() => set({ error: null }))
+      .catch((e: Error) => set({ error: e.message, playing: false }))
+  },
+
+  pause() {
+    if (activeEngine?.isPlaying()) activeEngine.pause()
+    set({ playing: false })
+  },
+
+  async jumpTo(i) {
+    const { queue, index } = get()
+    if (!queue[i] || i === index) return
+    const currentTrack = queue[index]
+    if (currentTrack) pushHistory(keyOf(currentTrack))
+    await load(i, set, get)
   },
 
   async next(auto = false) {
@@ -214,6 +242,7 @@ export const usePlayer = create<PlayerState>((set, get) => ({
         // a single-track queue with shuffle on must still respect repeat
         if (repeat === 'off' && auto) {
           activeEngine?.pause()
+          activeEngine?.seek(0)
           set({ playing: false, position: 0 })
           return
         }
@@ -227,8 +256,10 @@ export const usePlayer = create<PlayerState>((set, get) => ({
       if (target >= queue.length) {
         if (repeat === 'all') target = 0
         else {
-          // end of queue — stop cleanly rather than looping silently
+          // end of queue — stop cleanly rather than looping silently. Seek the
+          // engine too, or it sits at the end while the scrubber reads 0:00.
           activeEngine?.pause()
+          activeEngine?.seek(0)
           set({ playing: false, position: 0 })
           return
         }
@@ -236,7 +267,7 @@ export const usePlayer = create<PlayerState>((set, get) => ({
     }
 
     const currentTrack = queue[index]
-    if (currentTrack) history.push(keyOf(currentTrack))
+    if (currentTrack) pushHistory(keyOf(currentTrack))
     await load(target, set, get)
   },
 
@@ -285,6 +316,7 @@ export const usePlayer = create<PlayerState>((set, get) => ({
     // moving the slider must also lift a previous mute, or the UI shows
     // sound at 50% while the engine stays silent
     activeEngine?.setVolume(vol)
+    activeEngine?.setMuted(vol === 0)
     persistVolume(vol)
     set({ volume: vol, muted: vol === 0 })
   },
@@ -326,10 +358,11 @@ export const usePlayer = create<PlayerState>((set, get) => ({
       }
       if (i > s.index) return { queue, index: s.index }
 
-      // removing the *currently playing* track: keep `index` pointing at the
-      // track that slid into its place so next/prev stay coherent, and keep
-      // `current` as-is because that audio is still playing.
-      return { queue, index: Math.min(s.index, queue.length - 1) }
+      // Removing the *currently playing* track: the audio keeps playing, so
+      // `current` stays. Point `index` at the slot BEFORE the splice — the
+      // track that slid into position `i` is then what "next" plays, instead
+      // of being silently skipped. (Highlighting is done by key, not index.)
+      return { queue, index: i - 1 }
     }),
 
   clearQueue: () => {
@@ -338,6 +371,7 @@ export const usePlayer = create<PlayerState>((set, get) => ({
     loadSeq++ // invalidate any in-flight load
     activeEngine?.teardown()
     activeEngine = null
+    if ('mediaSession' in navigator) navigator.mediaSession.metadata = null
     set({
       queue: [],
       index: -1,
@@ -346,8 +380,12 @@ export const usePlayer = create<PlayerState>((set, get) => ({
       position: 0,
       duration: 0,
       videoActive: false,
+      videoExpanded: false,
       queueExtending: false,
       queueExhausted: false,
+      loading: false,
+      error: null,
+      fromCache: false,
     })
   },
 
@@ -431,6 +469,7 @@ async function load(
 
   try {
     engine.setVolume(get().muted ? 0 : get().volume)
+    engine.setMuted(get().muted)
     await engine.load(track)
     if (token !== loadSeq) return
 
@@ -438,6 +477,7 @@ async function load(
     // track IS playing here. Assert it rather than waiting on the 'play' event
     // to land — a missed event left `playing` false while audio played, which
     // made the pause button need a second click to register.
+    consecutiveLoadFailures = 0
     set({ loading: false, fromCache: isFromCache(), playing: true })
     updateMediaSession(track, get)
 
@@ -462,8 +502,25 @@ async function load(
       loading: false,
       playing: false,
     })
+
+    /*
+      A radio tail is full of URLs we've never validated, so dead streams are
+      expected. Skip forward rather than dead-ending the session — but only a
+      few times in a row, so a fully-down catalog doesn't become a skip storm,
+      and never under repeat-one, where "next" is this same broken track.
+    */
+    const { queue, index, repeat } = get()
+    const hasSomewhereToGo = index < queue.length - 1 || repeat === 'all'
+    if (repeat !== 'one' && hasSomewhereToGo && consecutiveLoadFailures < MAX_AUTO_SKIPS) {
+      consecutiveLoadFailures++
+      void get().next(true)
+    }
   }
 }
+
+/** Consecutive failed loads; bounds the auto-skip above. */
+let consecutiveLoadFailures = 0
+const MAX_AUTO_SKIPS = 3
 
 /** Seconds skipped by the lock-screen ±buttons when the OS gives no offset. */
 const SEEK_STEP = 10
@@ -549,8 +606,12 @@ export async function topUpQueue(
   try {
     // over-fetch, because most of a seed's results are already queued
     const recs = await getMatchingRecommendations(seed, want * 2)
-    const existing = new Set(get().queue.map(keyOf))
-    const fresh = recs.filter((r) => !existing.has(keyOf(r))).slice(0, want)
+    // filter by identity as well as id — the same song shows up under several
+    // ids across compilations, and an id-only check queues audible duplicates
+    const existing = new Set(get().queue.flatMap((t) => [keyOf(t), identityOf(t)]))
+    const fresh = recs
+      .filter((r) => !existing.has(keyOf(r)) && !existing.has(identityOf(r)))
+      .slice(0, want)
 
     if (!fresh.length) {
       // don't ask this seed again; the next tail track becomes the next seed
@@ -605,14 +666,11 @@ function updateMediaSession(track: Track, get: () => PlayerState) {
     }
   }
 
-  // `play` and `pause` both mapped to toggle(), so an OS "play" arriving while
-  // the track was already playing would pause it instead.
-  trySet('play', () => {
-    if (!get().playing) get().toggle()
-  })
-  trySet('pause', () => {
-    if (get().playing) get().toggle()
-  })
+  // Idempotent handlers that consult the ENGINE's real state — gating on the
+  // store flag meant a stale flag made the lock-screen button do the opposite
+  // of its label.
+  trySet('play', () => get().play())
+  trySet('pause', () => get().pause())
   trySet('nexttrack', () => void get().next())
   trySet('previoustrack', () => void get().prev())
 

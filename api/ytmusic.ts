@@ -20,6 +20,11 @@ function getClient() {
   if (!clientPromise) {
     const yt = new YTMusic()
     clientPromise = yt.initialize().then(() => yt)
+    // Never cache a rejection: a single transient failure would otherwise
+    // poison this warm container and 502 every request until it's recycled.
+    clientPromise.catch(() => {
+      clientPromise = null
+    })
   }
   return clientPromise
 }
@@ -36,7 +41,18 @@ const str = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) 
 export default async function handler(req: AnyReq, res: AnyRes) {
   const params = req.query ?? Object.fromEntries(new URL(req.url ?? '', 'http://x').searchParams)
   const action = str(params.action) || 'searchSongs'
-  const q = str(params.q)
+  // cap the query so the endpoint can't be used to relay arbitrary payloads
+  const q = str(params.q).slice(0, 200)
+
+  // The docs advertise pointing VITE_YTMUSIC_API at a bridge on another host —
+  // that only works if the bridge answers cross-origin.
+  res.setHeader('access-control-allow-origin', '*')
+  res.setHeader('access-control-allow-methods', 'GET, OPTIONS')
+  if ((req as { method?: string }).method === 'OPTIONS') {
+    // 200 with an empty body — 204 must not carry one, and res.json always does
+    res.status(200).json({})
+    return
+  }
 
   try {
     const yt = await getClient()

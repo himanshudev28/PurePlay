@@ -19,10 +19,14 @@ import { WebSocketServer } from 'ws'
 
 const PORT = process.env.ROOM_PORT ? Number(process.env.ROOM_PORT) : 8787
 
-const wss = new WebSocketServer({ port: PORT })
+const wss = new WebSocketServer({ port: PORT, maxPayload: 64 * 1024 })
 
 /** room code -> set of sockets currently in it */
 const rooms = new Map()
+
+// In `ws`, an 'error' event with no listener is rethrown as an uncaught
+// exception — one client's ECONNRESET would crash the relay for every room.
+wss.on('error', (err) => console.error('server error:', err.message))
 
 wss.on('connection', (socket, req) => {
   const room = new URL(req.url, 'http://localhost').searchParams.get('room') || 'default'
@@ -33,7 +37,13 @@ wss.on('connection', (socket, req) => {
     rooms.set(room, peers)
   }
   peers.add(socket)
+  socket.isAlive = true
   console.log(`+ ${room} (${peers.size} in room)`)
+
+  socket.on('error', (err) => console.error(`socket error in ${room}:`, err.message))
+  socket.on('pong', () => {
+    socket.isAlive = true
+  })
 
   socket.on('message', (data) => {
     const frame = data.toString()
@@ -48,5 +58,22 @@ wss.on('connection', (socket, req) => {
     console.log(`- ${room} (${peers.size} in room)`)
   })
 })
+
+/*
+  Liveness sweep: a phone that drops off Wi-Fi never sends a close frame, so
+  without ping/pong its half-open socket stays in the peer set and receives
+  broadcasts forever.
+*/
+const sweep = setInterval(() => {
+  for (const socket of wss.clients) {
+    if (socket.isAlive === false) {
+      socket.terminate()
+      continue
+    }
+    socket.isAlive = false
+    socket.ping()
+  }
+}, 30_000)
+wss.on('close', () => clearInterval(sweep))
 
 console.log(`PurePlay room relay listening on ws://localhost:${PORT}`)

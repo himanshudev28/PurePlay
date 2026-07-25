@@ -1,6 +1,7 @@
 import type { MusicSource } from './source'
 import { SourceError } from './source'
 import type { Track, Artist, Collection, SearchResults } from '@/types'
+import { withTimeout } from '@/lib/net'
 
 const APP_NAME = 'PurePlay'
 const DISCOVERY = 'https://api.audius.co'
@@ -17,7 +18,7 @@ let hostPromise: Promise<string[]> | null = null
 async function loadHosts(): Promise<string[]> {
   if (hostPool.length) return hostPool
   if (!hostPromise) {
-    hostPromise = fetch(DISCOVERY)
+    hostPromise = fetch(DISCOVERY, { signal: withTimeout() })
       .then((r) => r.json())
       .then((j: { data?: string[] }) => {
         if (!j.data?.length) throw new SourceError('Audius returned no hosts')
@@ -41,7 +42,7 @@ async function api<T>(path: string, signal?: AbortSignal): Promise<T> {
     const host = hosts[(hostIndex + attempt) % hosts.length]
     const sep = path.includes('?') ? '&' : '?'
     try {
-      const res = await fetch(`${host}/v1${path}${sep}app_name=${APP_NAME}`, { signal })
+      const res = await fetch(`${host}/v1${path}${sep}app_name=${APP_NAME}`, { signal: withTimeout(signal) })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       // node worked — make it the preferred one
       hostIndex = (hostIndex + attempt) % hosts.length
@@ -203,7 +204,7 @@ export const audiusSource: MusicSource = {
     // soon as the headers land, so read res.url and cancel the body immediately —
     // nothing beyond the first buffer is ever transferred.
     try {
-      const res = await fetch(endpoint)
+      const res = await fetch(endpoint, { signal: withTimeout() })
       void res.body?.cancel()
       if (!res.ok) throw new SourceError(`Stream unavailable (HTTP ${res.status})`)
       return res.url || endpoint

@@ -162,12 +162,16 @@ export const useRoom = create<RoomState>((set, get) => ({
         p.current && msg.track && p.current.id === msg.track.id && p.current.source === msg.track.source
 
       if (msg.track && !sameTrack) {
-        void p.playTrack(msg.track).then(() => {
-          const after = usePlayer.getState()
-          after.seek(target)
-          if (!msg.playing && after.playing) after.toggle()
-          clear(400)
-        })
+        void p
+          .playTrack(msg.track)
+          .then(() => {
+            const after = usePlayer.getState()
+            after.seek(target)
+            if (!msg.playing) after.pause()
+          })
+          // finally, not then: a failed load must still release the flag, or
+          // this client stops broadcasting for the rest of the session
+          .finally(() => clear(400))
         return
       }
       if (!msg.track) {
@@ -179,7 +183,10 @@ export const useRoom = create<RoomState>((set, get) => ({
       set({ drift: delta })
       if (Math.abs(delta) > HARD_SEEK_THRESHOLD) p.seek(target)
       else if (Math.abs(delta) > DRIFT_DEADZONE) p.seek(p.position + delta * 0.5)
-      if (msg.playing !== p.playing) p.toggle()
+      // idempotent play/pause, not toggle() — if the flag and the engine ever
+      // disagree, toggle would do the opposite of what the controller asked
+      if (msg.playing) p.play()
+      else p.pause()
       clear(60)
     }
 
@@ -313,3 +320,16 @@ export const useRoom = create<RoomState>((set, get) => ({
 
   clearNotice: () => set({ notice: null }),
 }))
+
+/*
+  Closing the tab must tell the room, or the departed member lingers in every
+  peer's list forever — and because the host is elected as "lowest id", a ghost
+  can permanently win the election, leaving the room with no live host, no
+  heartbeat, and no drift correction. `pagehide` is the reliable end-of-page
+  signal (fires on close, navigation, and bfcache entry alike).
+*/
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', () => {
+    if (useRoom.getState().roomId) useRoom.getState().leave()
+  })
+}

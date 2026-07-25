@@ -26,7 +26,12 @@ export default function Playlist() {
 
   useEffect(() => {
     if (localId) {
+      // this component instance is reused across playlist navigations — a
+      // previous catalog playlist's error/data must not bleed into a local one
       setLoading(false)
+      setError(null)
+      setCollection(null)
+      setTracks([])
       return
     }
     // navigating between playlists quickly could let a slow response land

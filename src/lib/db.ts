@@ -90,12 +90,25 @@ export async function downloadedIds(): Promise<Set<string>> {
  * Streams the audio into IndexedDB, reporting progress. A failed download
  * leaves no partial record — re-running starts clean.
  */
+/**
+ * Ask the browser to protect this origin's storage from silent eviction —
+ * without it, Safari/Chrome may drop the whole offline library under storage
+ * pressure with no notification. Best-effort; requested once.
+ */
+let persistRequested = false
+function requestPersistentStorage() {
+  if (persistRequested || !navigator.storage?.persist) return
+  persistRequested = true
+  void navigator.storage.persist().catch(() => {})
+}
+
 export async function saveDownload(
   track: Track,
   url: string,
   onProgress?: (fraction: number) => void,
   signal?: AbortSignal,
 ): Promise<void> {
+  requestPersistentStorage()
   const res = await fetch(url, { signal })
   if (!res.ok) throw new Error(`Download failed: HTTP ${res.status}`)
 

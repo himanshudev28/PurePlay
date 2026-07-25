@@ -49,6 +49,10 @@ export default function Settings() {
 
   const handlePlayerThemeChange = (id: PlayerThemeId) => {
     setPlayerTheme(id)
+    // With "sync accent" on, picking a player theme rewrites the saved accent —
+    // re-read it so the Accent radiogroup above doesn't keep showing the old
+    // choice as checked.
+    setActiveTheme(getSavedThemeId())
   }
 
   const handleClearCache = async () => {
@@ -61,8 +65,13 @@ export default function Settings() {
     setClearing(true)
     try {
       if ('caches' in window) {
+        // only OUR caches — the service worker deliberately namespaces them
+        // (sw.js), and deleting every cache on the origin would evict storage
+        // belonging to anything else served from it
         const keys = await caches.keys()
-        await Promise.all(keys.map((k) => caches.delete(k)))
+        await Promise.all(
+          keys.filter((k) => k.startsWith('shell-') || k.startsWith('assets-')).map((k) => caches.delete(k)),
+        )
       }
       const downloads = await listDownloads()
       await Promise.all(downloads.map((d) => removeDownload(d.track)))
@@ -70,6 +79,8 @@ export default function Settings() {
       await refreshUsage()
       setCleared(true)
       setTimeout(() => setCleared(false), 3000)
+    } catch (e) {
+      console.error('[settings] clearing storage failed:', e)
     } finally {
       setClearing(false)
     }
@@ -148,7 +159,10 @@ export default function Settings() {
             <input
               type="checkbox"
               checked={syncAccent}
-              onChange={(e) => setSyncAccent(e.target.checked)}
+              onChange={(e) => {
+                setSyncAccent(e.target.checked)
+                setActiveTheme(getSavedThemeId())
+              }}
               className="h-5 w-5 rounded border-ink-700 text-accent focus:ring-accent accent-accent cursor-pointer"
             />
           </label>
@@ -274,17 +288,14 @@ export default function Settings() {
             <Smartphone size={16} /> Install PurePlay App
           </button>
         ) : (
-          <div className="space-y-2">
-            <button
-              onClick={() => void promptInstall()}
-              className="flex items-center gap-2 rounded-xl bg-accent px-5 py-2.5 text-xs font-bold text-ink-950 shadow-lg hover:scale-105 transition"
-            >
-              <Smartphone size={16} /> Install PurePlay App
-            </button>
-            <p className="text-xs text-ink-400">
-              Tip: You can also install PurePlay directly from your browser menu by selecting <strong className="text-white">"Add to Home Screen"</strong> or <strong className="text-white">"Install App"</strong>.
-            </p>
-          </div>
+          /* No install prompt is available here (iOS Safari, Firefox) — a
+             primary button that does nothing on tap is worse than honest
+             instructions, so the manual path IS the content. */
+          <p className="text-xs text-ink-300">
+            Your browser doesn't offer one-tap install. Open the browser menu and choose{' '}
+            <strong className="text-white">"Add to Home Screen"</strong> (iOS Safari) or{' '}
+            <strong className="text-white">"Install App"</strong> to install PurePlay.
+          </p>
         )}
       </Section>
     </div>

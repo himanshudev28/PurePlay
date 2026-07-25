@@ -2,6 +2,7 @@ import type { MusicSource } from './source'
 import { SourceError } from './source'
 import type { Track, Artist, Collection, SearchResults } from '@/types'
 import { getQuality, type Quality } from '@/lib/prefs'
+import { withTimeout } from '@/lib/net'
 
 /*
   API mirrors, tried in order. Set VITE_JIOSAAVN_API in .env to put your own
@@ -48,7 +49,11 @@ const release = () => {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 const CACHE_TTL = 5 * 60 * 1000
+/** Entries are only TTL-checked on read, so cap the map or a long session
+ *  accumulates every response body ever fetched. */
+const CACHE_MAX = 150
 const responseCache = new Map<string, { at: number; body: string; status: number }>()
+
 
 /*
   Circuit breaker. When every mirror fails (the public instances are frequently
@@ -65,14 +70,17 @@ async function fetchWithRetry(target: string, init?: RequestInit, attempts = 1):
   for (let attempt = 0; ; attempt++) {
     if (init?.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
     try {
-      const res = await fetch(target, init)
+      // per-attempt timeout — a mirror that accepts and then hangs must fail
+      // over like one that refuses
+      const res = await fetch(target, { ...init, signal: withTimeout(init?.signal) })
       if (res.status === 429 && attempt < attempts) {
         await sleep(500 * (attempt + 1) + Math.random() * 300)
         continue
       }
       return res
     } catch (e) {
-      if (e instanceof DOMException && e.name === 'AbortError') throw e
+      // only rethrow a CALLER abort — a TimeoutError falls through to retry
+      if (init?.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
       if (attempt < attempts) {
         await sleep(500 * (attempt + 1) + Math.random() * 300)
         continue
@@ -82,18 +90,19 @@ async function fetchWithRetry(target: string, init?: RequestInit, attempts = 1):
   }
 }
 
-async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
-  const cacheable = !init?.method || init.method === 'GET'
-  if (cacheable) {
-    const hit = responseCache.get(url)
-    if (hit && Date.now() - hit.at < CACHE_TTL) return new Response(hit.body, { status: hit.status })
-  }
-
-  // Breaker open — don't waste seconds re-failing; let the caller fall back now.
+/** Walk the mirror list; resolves with the body of the first usable response. */
+async function fetchThroughMirrors(
+  url: string,
+  init?: RequestInit,
+): Promise<{ body: string; status: number; ok: boolean }> {
+  // Re-check the breaker AFTER the semaphore too: a burst of ~20 requests all
+  // passes a single up-front check in the same tick, then queues — by the time
+  // a queued request gets a slot, an earlier one may have tripped the breaker.
   if (Date.now() < downUntil) throw new Error('Catalog temporarily unavailable')
-
   await acquire()
   try {
+    if (Date.now() < downUntil) throw new Error('Catalog temporarily unavailable')
+
     let lastError: unknown
     for (const base of API_BASES) {
       const target = base === API_BASE ? url : url.replace(API_BASE, base)
@@ -101,17 +110,24 @@ async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
         const res = await fetchWithRetry(target, init)
         if (res.ok) {
           downUntil = 0 // a success reopens the breaker
-          if (cacheable) {
-            const body = await res.text()
-            responseCache.set(url, { at: Date.now(), body, status: res.status })
-            return new Response(body, { status: res.status })
+          const body = await res.text()
+          if (responseCache.size >= CACHE_MAX) {
+            const oldest = responseCache.keys().next().value
+            if (oldest !== undefined) responseCache.delete(oldest)
           }
-          return res
+          responseCache.set(url, { at: Date.now(), body, status: res.status })
+          return { body, status: res.status, ok: true }
         }
-        // 4xx (not-found/bad request) is the same on every mirror — don't waste
-        // time failing over. Only rate-limits and server errors get another try.
-        if (res.status !== 429 && res.status < 500) return res
+        /*
+          Don't fail over on 429 (retried above) but DO fail over on other
+          4xx: the mirrors are different implementations (a self-hosted worker
+          vs saavn.sumit.co), so a 404 from one does not mean the other lacks
+          the endpoint. Server errors fail over as before.
+        */
         lastError = new Error(`HTTP ${res.status}`)
+        if (res.status !== 429 && res.status < 500 && base === API_BASES[API_BASES.length - 1]) {
+          return { body: await res.text(), status: res.status, ok: false }
+        }
       } catch (e) {
         if (e instanceof DOMException && e.name === 'AbortError') throw e
         lastError = e
@@ -123,6 +139,33 @@ async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
   } finally {
     release()
   }
+}
+
+/** GETs already on the wire, so identical concurrent requests share one fetch
+ *  instead of stampeding an API that rate-limits at ~20 concurrent. */
+const pending = new Map<string, Promise<{ body: string; status: number; ok: boolean }>>()
+
+async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
+  const cacheable = !init?.method || init.method === 'GET'
+  if (!cacheable) return fetchThroughMirrors(url, init).then((r) => new Response(r.body, { status: r.status }))
+
+  const hit = responseCache.get(url)
+  if (hit && Date.now() - hit.at < CACHE_TTL) return new Response(hit.body, { status: hit.status })
+
+  // Only share requests that carry no abort signal — a shared promise tied to
+  // one caller's signal would reject for everyone when that caller aborts.
+  if (init?.signal) {
+    const r = await fetchThroughMirrors(url, init)
+    return new Response(r.body, { status: r.status })
+  }
+
+  let inFlight = pending.get(url)
+  if (!inFlight) {
+    inFlight = fetchThroughMirrors(url, init).finally(() => pending.delete(url))
+    pending.set(url, inFlight)
+  }
+  const r = await inFlight
+  return new Response(r.body, { status: r.status })
 }
 
 interface RawImage { quality: string; url: string }
@@ -168,20 +211,25 @@ const getBestImage = (img?: RawImage[]): string | undefined => {
 }
 
 /**
- * JioSaavn returns a fixed ladder of bitrates: 12, 48, 96, 160, 320 kbps.
- * Start at whatever the user chose in Settings and walk down from there, so
- * "Data Saver" genuinely fetches the smaller file instead of being decorative.
+ * Pick the best stream at or below the user's chosen quality, so "Data Saver"
+ * genuinely fetches the smaller file instead of being decorative.
+ *
+ * Matched on the `quality` FIELD ("320kbps"), never on array position — the
+ * mirrors are different implementations and nothing guarantees the ladder's
+ * order or length, and indexing a differently-ordered ladder silently served
+ * 12kbps to users who chose 320.
  */
-const QUALITY_INDEX: Record<Quality, number> = { '320': 4, '160': 3, '96': 2 }
-
 const getBestAudioUrl = (urls?: RawDownloadUrl[]): string | undefined => {
   if (!urls?.length) return undefined
-  const start = QUALITY_INDEX[getQuality()]
-  for (let i = start; i >= 0; i--) {
-    if (urls[i]?.url) return urls[i].url
-  }
-  // the ladder was shorter than expected — take whatever exists
-  return urls.find((u) => u?.url)?.url
+  const want = Number(getQuality() satisfies Quality)
+  const parsed = urls
+    .filter((u) => u?.url)
+    .map((u) => ({ url: u.url, kbps: parseInt(u.quality, 10) }))
+
+  const usable = parsed.filter((u) => Number.isFinite(u.kbps)).sort((a, b) => b.kbps - a.kbps)
+  // highest at-or-below the preference, else the lowest available
+  const best = usable.find((u) => u.kbps <= want) ?? usable[usable.length - 1]
+  return best?.url ?? parsed[0]?.url
 }
 
 /**

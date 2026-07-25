@@ -2,6 +2,59 @@ import clsx from 'clsx'
 import { useState, useEffect, useRef, type ReactNode } from 'react'
 import { Music, Loader2 } from 'lucide-react'
 import { usePlayer } from '@/store/player'
+import { formatDuration } from '@/lib/format'
+
+/**
+ * The seek input used by every player surface.
+ *
+ * Two problems with a bare `value={position} onChange={seek}` range input:
+ * the thumb snaps back mid-drag whenever a timeupdate lands (YouTube's poll
+ * makes this constant), and a single drag fires dozens of engine seeks. This
+ * holds a local value while the pointer is down and commits ONE seek on
+ * release; keyboard arrows still commit immediately.
+ */
+export function SeekRange({ className }: { className?: string }) {
+  const position = usePlayer((s) => s.position)
+  const duration = usePlayer((s) => s.duration)
+  const seek = usePlayer((s) => s.seek)
+  const [drag, setDrag] = useState<number | null>(null)
+  const dragging = useRef(false)
+
+  const commit = () => {
+    dragging.current = false
+    setDrag((v) => {
+      if (v !== null) seek(v)
+      return null
+    })
+  }
+
+  const value = drag ?? position
+  return (
+    <input
+      type="range"
+      min={0}
+      max={duration || 0}
+      step={0.1}
+      value={value}
+      onPointerDown={() => {
+        dragging.current = true
+      }}
+      onPointerUp={commit}
+      onPointerCancel={commit}
+      onChange={(e) => {
+        const v = Number(e.target.value)
+        if (dragging.current) setDrag(v)
+        else seek(v)
+      }}
+      aria-label="Seek"
+      aria-valuetext={`${formatDuration(value)} of ${formatDuration(duration)}`}
+      className={clsx(
+        'seek-bar absolute inset-0 h-full w-full cursor-pointer opacity-0 group-hover:opacity-100',
+        className,
+      )}
+    />
+  )
+}
 
 /**
  * Marks the row/card that is currently playing.

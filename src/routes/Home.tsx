@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Play, Sparkles, Flame, Music, Heart, Headphones, Radio, ListMusic, Shuffle } from 'lucide-react'
 import clsx from 'clsx'
 import type { Track, Collection, Artist } from '@/types'
@@ -83,9 +83,14 @@ export default function Home() {
   const [artists, setArtists] = useState<Artist[]>([])
   const [playlistShelves, setPlaylistShelves] = useState<Shelf<Collection>[]>([])
   const [songShelves, setSongShelves] = useState<Shelf<Track>[]>([])
-  const [activeCategory, setActiveCategory] = useState<string>('Bollywood Hits')
+  // null = the initial trending feed; only set once the user picks a pill.
+  // Booting with a category pre-"selected" showed trending content under a
+  // "Bollywood Hits" heading with that pill falsely marked pressed.
+  const [activeCategory, setActiveCategory] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  /** Monotonic token so a slow category response can't overwrite a newer one. */
+  const loadSeq = useRef(0)
 
   const playQueue = usePlayer((s) => s.playQueue)
   const playShuffled = usePlayer((s) => s.playShuffled)
@@ -100,24 +105,33 @@ export default function Home() {
     return seed ? leadArtist(seed.artist) || null : null
   }, [favorites, recent])
 
-  const loadCategory = (catQuery: string) => {
+  const loadCategory = useCallback((catQuery: string) => {
+    const token = ++loadSeq.current
     setLoading(true)
     setError(null)
     setActiveCategory(catQuery)
 
     Promise.all([discoverTracks(catQuery, 40), source.featuredCollections(12).catch(() => [])])
       .then(([t, c]) => {
+        // two quick pill taps race — only the latest response may land
+        if (token !== loadSeq.current) return
         setTrending(t.slice(0, 40))
         if (c.length > 0) setCollections(c)
         setError(t.length ? null : 'Could not load the catalog')
       })
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false))
-  }
+      .catch((e: Error) => {
+        if (token === loadSeq.current) setError(e.message)
+      })
+      .finally(() => {
+        if (token === loadSeq.current) setLoading(false)
+      })
+  }, [])
 
-  useEffect(() => {
+  const loadTrending = useCallback(() => {
+    const token = ++loadSeq.current
     setLoading(true)
     setError(null)
+    setActiveCategory(null)
     // trending() can fail hard when the JioSaavn mirrors are down; fall back to
     // YouTube Music so the home still fills instead of showing a bare error.
     Promise.all([
@@ -125,13 +139,22 @@ export default function Home() {
       source.featuredCollections(12).catch(() => []),
     ])
       .then(([t, c]) => {
+        if (token !== loadSeq.current) return
         setTrending(t)
         setCollections(c)
         setError(t.length ? null : 'Could not load the catalog')
       })
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false))
+      .catch((e: Error) => {
+        if (token === loadSeq.current) setError(e.message)
+      })
+      .finally(() => {
+        if (token === loadSeq.current) setLoading(false)
+      })
   }, [])
+
+  useEffect(() => {
+    loadTrending()
+  }, [loadTrending])
 
   // Discovery shelves — artists, genre playlists, genre songs — all in parallel.
   // Each is independent, so one failing never blanks the others.
@@ -192,6 +215,9 @@ export default function Home() {
   }, [tasteArtist])
 
   const hero = trending[0]
+  // one stable slice — computing it inline created a fresh queue array per row,
+  // per render, defeating the rows' memoization
+  const moreSongs = useMemo(() => trending.slice(20, 40), [trending])
 
   return (
     <div className="relative -mx-4 -my-6 space-y-10 overflow-hidden bg-[var(--shell-bg,#070708)] text-[var(--color-ink-200,#c6c6d2)] transition-colors duration-300 px-4 py-6 sm:-mx-6 sm:px-6">
@@ -212,7 +238,11 @@ export default function Home() {
       </header>
 
       {error && (
-        <ErrorNote message={`Couldn't load the catalog: ${error}`} onRetry={() => loadCategory(activeCategory)} />
+        <ErrorNote
+          message={`Couldn't load the catalog: ${error}`}
+          // retry what actually failed: the chosen category, or the initial feed
+          onRetry={() => (activeCategory ? loadCategory(activeCategory) : loadTrending())}
+        />
       )}
 
       {/* Hero — featured track */}
@@ -445,8 +475,8 @@ export default function Home() {
         <div className="space-y-0.5">
           {loading
             ? Array.from({ length: 6 }, (_, i) => <Skeleton key={i} className="h-14 w-full" />)
-            : trending.slice(20, 40).map((t, i) => (
-                <TrackRow key={`${t.source}-${t.id}`} track={t} index={i} queue={trending.slice(20, 40)} />
+            : moreSongs.map((t, i) => (
+                <TrackRow key={`${t.source}-${t.id}`} track={t} index={i} queue={moreSongs} />
               ))}
         </div>
       </section>

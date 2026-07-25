@@ -1,3 +1,5 @@
+import { withTimeout } from '@/lib/net'
+
 export interface LyricLine {
   time: number // in seconds
   text: string
@@ -14,24 +16,30 @@ export interface LyricsData {
 export function parseLrc(lrcText: string): LyricLine[] {
   const lines = lrcText.split('\n')
   const result: LyricLine[] = []
-  const timeRegex = /\[(\d{2}):(\d{2})\.(\d{2,3})\]/
+  // Global, with optional fractional seconds: standard LRC compresses repeated
+  // lines as "[00:12.34][01:20.50]Chorus", and "[mm:ss]" (no fraction) is valid
+  // — a non-global regex leaked the extra timestamps into the rendered text and
+  // dropped the repeats entirely.
+  const timeRegex = /\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]/g
 
   for (const line of lines) {
-    const match = timeRegex.exec(line)
-    if (match) {
+    timeRegex.lastIndex = 0
+    const stamps: number[] = []
+    let match: RegExpExecArray | null
+    while ((match = timeRegex.exec(line))) {
       const minutes = parseInt(match[1], 10)
       const seconds = parseInt(match[2], 10)
-      const millis = parseInt(match[3].padEnd(3, '0').slice(0, 3), 10)
-      const totalSeconds = minutes * 60 + seconds + millis / 1000
-      const text = line.replace(timeRegex, '').trim()
-      if (text) {
-        result.push({ time: totalSeconds, text })
-      }
-    } else {
-      const trimmed = line.trim()
-      if (trimmed && !trimmed.startsWith('[')) {
-        result.push({ time: 0, text: trimmed })
-      }
+      const millis = match[3] ? parseInt(match[3].padEnd(3, '0').slice(0, 3), 10) : 0
+      stamps.push(minutes * 60 + seconds + millis / 1000)
+    }
+
+    const text = line.replace(timeRegex, '').trim()
+    if (!text) continue
+    if (stamps.length) {
+      for (const time of stamps) result.push({ time, text })
+    } else if (!text.startsWith('[')) {
+      // metadata tags like [ar:...] fall through here and are skipped
+      result.push({ time: 0, text })
     }
   }
 
@@ -98,7 +106,7 @@ async function lookup(
       track_name: cleanTitle,
       artist_name: cleanArtist,
     })
-    const res = await fetch(`https://lrclib.net/api/get?${params}`, { signal })
+    const res = await fetch(`https://lrclib.net/api/get?${params}`, { signal: withTimeout(signal) })
 
     if (res.ok) {
       const data = (await res.json()) as {
@@ -121,7 +129,7 @@ async function lookup(
     // fallback search query if direct get fails
     const searchRes = await fetch(
       `https://lrclib.net/api/search?q=${encodeURIComponent(`${cleanTitle} ${cleanArtist}`)}`,
-      { signal },
+      { signal: withTimeout(signal) },
     )
     if (searchRes.ok) {
       const searchData = (await searchRes.json()) as Array<{

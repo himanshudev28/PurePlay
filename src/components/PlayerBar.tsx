@@ -10,7 +10,7 @@ import type { Track, Collection } from '@/types'
 import { usePlayer } from '@/store/player'
 import { useLibrary } from '@/store/library'
 import { getSuggestions } from '@/services/recommendations'
-import { Artwork, NowPlayingBars, QueueTailLoader } from './ui'
+import { Artwork, NowPlayingBars, QueueTailLoader, SeekRange } from './ui'
 import { keyOf } from '@/lib/db'
 import { usePlayerTheme } from '@/contexts/PlayerThemeContext'
 
@@ -172,7 +172,7 @@ export function PlayerBar() {
           <div className="group relative h-1.5 cursor-pointer">
             <span aria-hidden className="absolute inset-0" style={{ background: '#c0b8ac' }} />
             <span aria-hidden className="absolute inset-y-0 left-0" style={{ width: `${pct}%`, background: '#8a7d6a' }} />
-            <input type="range" min={0} max={s.duration || 0} step={0.1} value={s.position} onChange={(e) => s.seek(Number(e.target.value))} aria-label="Seek" className="seek-bar absolute inset-0 h-full w-full cursor-pointer opacity-0 group-hover:opacity-100" />
+            <SeekRange />
           </div>
 
           <div className="flex items-center gap-3 px-4 py-2 sm:px-6">
@@ -201,7 +201,7 @@ export function PlayerBar() {
 
             <div className="flex flex-1 items-center justify-end gap-1 sm:gap-2">
               <button onClick={() => s.setPlayerViewMode('card')} title="Card view" className="hidden rounded-full p-2 text-stone-500 hover:text-stone-800 sm:block"><LayoutGrid size={17} /></button>
-              <button onClick={() => setQueueOpen((v) => !v)} title="Queue" className="rounded-full p-2 text-stone-500 hover:text-stone-800"><ListMusic size={17} /></button>
+              <button onClick={() => setQueueOpen((v) => !v)} data-queue-toggle title="Queue" className="rounded-full p-2 text-stone-500 hover:text-stone-800"><ListMusic size={17} /></button>
               <button onClick={s.openFullPlayer} title="Full screen player" className="rounded-full p-2 text-stone-500 hover:text-stone-800"><Maximize2 size={17} /></button>
             </div>
           </div>
@@ -226,7 +226,7 @@ export function PlayerBar() {
           <div className="group relative h-1.5 cursor-pointer">
             <span aria-hidden className="absolute inset-0 bg-white/20" />
             <span aria-hidden className="absolute inset-y-0 left-0 bg-white" style={{ width: `${pct}%` }} />
-            <input type="range" min={0} max={s.duration || 0} step={0.1} value={s.position} onChange={(e) => s.seek(Number(e.target.value))} aria-label="Seek" className="seek-bar absolute inset-0 h-full w-full cursor-pointer opacity-0 group-hover:opacity-100" />
+            <SeekRange />
           </div>
 
           <div className="flex items-center gap-3 px-4 py-2 sm:px-6">
@@ -249,7 +249,7 @@ export function PlayerBar() {
 
             <div className="flex flex-1 items-center justify-end gap-1.5">
               <button onClick={() => s.setPlayerViewMode('card')} title="Card view" className="hidden rounded-full p-2 text-purple-200 hover:bg-white/10 hover:text-white sm:block"><LayoutGrid size={17} /></button>
-              <button onClick={() => setQueueOpen((v) => !v)} title="Queue" className="rounded-full p-2 text-purple-200 hover:bg-white/10 hover:text-white"><ListMusic size={17} /></button>
+              <button onClick={() => setQueueOpen((v) => !v)} data-queue-toggle title="Queue" className="rounded-full p-2 text-purple-200 hover:bg-white/10 hover:text-white"><ListMusic size={17} /></button>
               <button onClick={s.openFullPlayer} title="Full screen player" className="rounded-full p-2 text-purple-200 hover:bg-white/10 hover:text-white"><Maximize2 size={17} /></button>
               <VolumeControl textClass="text-purple-200 hover:text-white" />
             </div>
@@ -274,7 +274,7 @@ export function PlayerBar() {
           <div className="group relative h-1 cursor-pointer">
             <span aria-hidden className="absolute inset-0 bg-gray-800" />
             <span aria-hidden className="absolute inset-y-0 left-0 bg-white" style={{ width: `${pct}%` }} />
-            <input type="range" min={0} max={s.duration || 0} step={0.1} value={s.position} onChange={(e) => s.seek(Number(e.target.value))} aria-label="Seek" className="seek-bar absolute inset-0 h-full w-full cursor-pointer opacity-0 group-hover:opacity-100" />
+            <SeekRange />
           </div>
 
           <div className="flex items-center gap-3 px-4 py-2.5 sm:px-6">
@@ -294,7 +294,7 @@ export function PlayerBar() {
             <TransportControls btnClass="text-gray-400 hover:text-white" playBg="bg-white text-gray-950" />
 
             <div className="flex flex-1 items-center justify-end gap-1">
-              <button onClick={() => setQueueOpen((v) => !v)} title="Queue" className="rounded-full p-2 text-gray-400 hover:text-white"><ListMusic size={17} /></button>
+              <button onClick={() => setQueueOpen((v) => !v)} data-queue-toggle title="Queue" className="rounded-full p-2 text-gray-400 hover:text-white"><ListMusic size={17} /></button>
               <button onClick={s.openFullPlayer} title="Full screen player" className="rounded-full p-2 text-gray-400 hover:text-white"><Maximize2 size={17} /></button>
               <VolumeControl textClass="text-gray-400 hover:text-white" />
             </div>
@@ -323,7 +323,7 @@ export function PlayerBar() {
           <div className="group relative h-1.5 cursor-pointer">
             <span aria-hidden className="absolute inset-0 bg-rose-950/40" />
             <span aria-hidden className="absolute inset-y-0 left-0 bg-rose-400 shadow-[0_0_8px_#f43f5e]" style={{ width: `${pct}%` }} />
-            <input type="range" min={0} max={s.duration || 0} step={0.1} value={s.position} onChange={(e) => s.seek(Number(e.target.value))} aria-label="Seek" className="seek-bar absolute inset-0 h-full w-full cursor-pointer opacity-0 group-hover:opacity-100" />
+            <SeekRange />
           </div>
 
           <div className="flex items-center gap-3 px-4 py-2 sm:px-6">
@@ -346,7 +346,7 @@ export function PlayerBar() {
 
             <div className="flex flex-1 items-center justify-end gap-1.5">
               <button onClick={() => s.setPlayerViewMode('card')} title="Card view" className="hidden rounded-full p-2 text-rose-200 hover:bg-white/10 hover:text-white sm:block"><LayoutGrid size={17} /></button>
-              <button onClick={() => setQueueOpen((v) => !v)} title="Queue" className="rounded-full p-2 text-rose-200 hover:bg-white/10 hover:text-white"><ListMusic size={17} /></button>
+              <button onClick={() => setQueueOpen((v) => !v)} data-queue-toggle title="Queue" className="rounded-full p-2 text-rose-200 hover:bg-white/10 hover:text-white"><ListMusic size={17} /></button>
               <button onClick={s.openFullPlayer} title="Full screen player" className="rounded-full p-2 text-rose-200 hover:bg-white/10 hover:text-white"><Maximize2 size={17} /></button>
               <VolumeControl textClass="text-rose-200 hover:text-white" />
             </div>
@@ -375,7 +375,7 @@ export function PlayerBar() {
           <div className="group relative h-1.5 cursor-pointer">
             <span aria-hidden className="absolute inset-0 bg-orange-950/40" />
             <span aria-hidden className="absolute inset-y-0 left-0 bg-amber-300 shadow-[0_0_8px_#fbbf24]" style={{ width: `${pct}%` }} />
-            <input type="range" min={0} max={s.duration || 0} step={0.1} value={s.position} onChange={(e) => s.seek(Number(e.target.value))} aria-label="Seek" className="seek-bar absolute inset-0 h-full w-full cursor-pointer opacity-0 group-hover:opacity-100" />
+            <SeekRange />
           </div>
 
           <div className="flex items-center gap-3 px-4 py-2 sm:px-6">
@@ -398,7 +398,7 @@ export function PlayerBar() {
 
             <div className="flex flex-1 items-center justify-end gap-1.5">
               <button onClick={() => s.setPlayerViewMode('card')} title="Card view" className="hidden rounded-full p-2 text-orange-100 hover:bg-white/10 hover:text-white sm:block"><LayoutGrid size={17} /></button>
-              <button onClick={() => setQueueOpen((v) => !v)} title="Queue" className="rounded-full p-2 text-orange-100 hover:bg-white/10 hover:text-white"><ListMusic size={17} /></button>
+              <button onClick={() => setQueueOpen((v) => !v)} data-queue-toggle title="Queue" className="rounded-full p-2 text-orange-100 hover:bg-white/10 hover:text-white"><ListMusic size={17} /></button>
               <button onClick={s.openFullPlayer} title="Full screen player" className="rounded-full p-2 text-orange-100 hover:bg-white/10 hover:text-white"><Maximize2 size={17} /></button>
               <VolumeControl textClass="text-orange-100 hover:text-white" />
             </div>
@@ -427,7 +427,7 @@ export function PlayerBar() {
           <div className="group relative h-1.5 cursor-pointer">
             <span aria-hidden className="absolute inset-0 bg-teal-950/40" />
             <span aria-hidden className="absolute inset-y-0 left-0 bg-cyan-300 shadow-[0_0_8px_#06b6d4]" style={{ width: `${pct}%` }} />
-            <input type="range" min={0} max={s.duration || 0} step={0.1} value={s.position} onChange={(e) => s.seek(Number(e.target.value))} aria-label="Seek" className="seek-bar absolute inset-0 h-full w-full cursor-pointer opacity-0 group-hover:opacity-100" />
+            <SeekRange />
           </div>
 
           <div className="flex items-center gap-3 px-4 py-2 sm:px-6">
@@ -450,7 +450,7 @@ export function PlayerBar() {
 
             <div className="flex flex-1 items-center justify-end gap-1.5">
               <button onClick={() => s.setPlayerViewMode('card')} title="Card view" className="hidden rounded-full p-2 text-teal-100 hover:bg-white/10 hover:text-white sm:block"><LayoutGrid size={17} /></button>
-              <button onClick={() => setQueueOpen((v) => !v)} title="Queue" className="rounded-full p-2 text-teal-100 hover:bg-white/10 hover:text-white"><ListMusic size={17} /></button>
+              <button onClick={() => setQueueOpen((v) => !v)} data-queue-toggle title="Queue" className="rounded-full p-2 text-teal-100 hover:bg-white/10 hover:text-white"><ListMusic size={17} /></button>
               <button onClick={s.openFullPlayer} title="Full screen player" className="rounded-full p-2 text-teal-100 hover:bg-white/10 hover:text-white"><Maximize2 size={17} /></button>
               <VolumeControl textClass="text-teal-100 hover:text-white" />
             </div>
@@ -479,7 +479,7 @@ export function PlayerBar() {
           <div className="group relative h-1.5 cursor-pointer">
             <span aria-hidden className="absolute inset-0 bg-indigo-950/40" />
             <span aria-hidden className="absolute inset-y-0 left-0 bg-indigo-300 shadow-[0_0_8px_#818cf8]" style={{ width: `${pct}%` }} />
-            <input type="range" min={0} max={s.duration || 0} step={0.1} value={s.position} onChange={(e) => s.seek(Number(e.target.value))} aria-label="Seek" className="seek-bar absolute inset-0 h-full w-full cursor-pointer opacity-0 group-hover:opacity-100" />
+            <SeekRange />
           </div>
 
           <div className="flex items-center gap-3 px-4 py-2 sm:px-6">
@@ -502,7 +502,7 @@ export function PlayerBar() {
 
             <div className="flex flex-1 items-center justify-end gap-1.5">
               <button onClick={() => s.setPlayerViewMode('card')} title="Card view" className="hidden rounded-full p-2 text-indigo-100 hover:bg-white/10 hover:text-white sm:block"><LayoutGrid size={17} /></button>
-              <button onClick={() => setQueueOpen((v) => !v)} title="Queue" className="rounded-full p-2 text-indigo-100 hover:bg-white/10 hover:text-white"><ListMusic size={17} /></button>
+              <button onClick={() => setQueueOpen((v) => !v)} data-queue-toggle title="Queue" className="rounded-full p-2 text-indigo-100 hover:bg-white/10 hover:text-white"><ListMusic size={17} /></button>
               <button onClick={s.openFullPlayer} title="Full screen player" className="rounded-full p-2 text-indigo-100 hover:bg-white/10 hover:text-white"><Maximize2 size={17} /></button>
               <VolumeControl textClass="text-indigo-100 hover:text-white" />
             </div>
@@ -533,7 +533,7 @@ export function PlayerBar() {
           <div className="group relative h-1.5 cursor-pointer">
             <span aria-hidden className="absolute inset-0 bg-white/10" />
             <span aria-hidden className="absolute inset-y-0 left-0" style={{ width: `${pct}%`, background: 'linear-gradient(90deg, #38bdf8, #818cf8)' }} />
-            <input type="range" min={0} max={s.duration || 0} step={0.1} value={s.position} onChange={(e) => s.seek(Number(e.target.value))} aria-label="Seek" className="seek-bar absolute inset-0 h-full w-full cursor-pointer opacity-0 group-hover:opacity-100" />
+            <SeekRange />
           </div>
 
           <div className="flex items-center gap-3 px-4 py-2 sm:px-6">
@@ -556,7 +556,7 @@ export function PlayerBar() {
 
             <div className="flex flex-1 items-center justify-end gap-1.5">
               <button onClick={() => s.setPlayerViewMode('card')} title="Card view" className="hidden rounded-full p-2 text-white/50 hover:bg-white/10 hover:text-white sm:block"><LayoutGrid size={17} /></button>
-              <button onClick={() => setQueueOpen((v) => !v)} title="Queue" className="rounded-full p-2 text-white/50 hover:bg-white/10 hover:text-white"><ListMusic size={17} /></button>
+              <button onClick={() => setQueueOpen((v) => !v)} data-queue-toggle title="Queue" className="rounded-full p-2 text-white/50 hover:bg-white/10 hover:text-white"><ListMusic size={17} /></button>
               <button onClick={s.openFullPlayer} title="Full screen player" className="rounded-full p-2 text-white/50 hover:bg-white/10 hover:text-white"><Maximize2 size={17} /></button>
               <VolumeControl textClass="text-white/50 hover:text-white" />
             </div>
@@ -581,16 +581,7 @@ export function PlayerBar() {
         <div className="group relative h-1.5 cursor-pointer">
           <span aria-hidden className="absolute inset-0 rounded-t bg-ink-700" />
           <span aria-hidden className="absolute inset-y-0 left-0 rounded-t bg-accent" style={{ width: `${pct}%` }} />
-          <input
-            type="range"
-            min={0}
-            max={s.duration || 0}
-            step={0.1}
-            value={s.position}
-            onChange={(e) => s.seek(Number(e.target.value))}
-            aria-label="Seek"
-            className="seek-bar absolute inset-0 h-full w-full cursor-pointer opacity-0 group-hover:opacity-100"
-          />
+          <SeekRange />
         </div>
 
         <div className="flex items-center gap-3 px-4 py-2 sm:px-6">
@@ -641,6 +632,7 @@ export function PlayerBar() {
             </button>
             <button
               onClick={() => setQueueOpen((v) => !v)}
+              data-queue-toggle
               title="Queue"
               className={clsx('rounded-full p-2 hover:bg-ink-800', queueOpen ? 'text-accent' : 'text-ink-400')}
             >
@@ -658,8 +650,8 @@ export function PlayerBar() {
 
 function QueuePanel({ onClose }: { onClose: () => void }) {
   const queue = usePlayer((s) => s.queue)
-  const index = usePlayer((s) => s.index)
-  const playQueue = usePlayer((s) => s.playQueue)
+  const current = usePlayer((s) => s.current)
+  const jumpTo = usePlayer((s) => s.jumpTo)
   const removeFromQueue = usePlayer((s) => s.removeFromQueue)
   const clearQueue = usePlayer((s) => s.clearQueue)
   const panelRef = useRef<HTMLElement>(null)
@@ -670,7 +662,12 @@ function QueuePanel({ onClose }: { onClose: () => void }) {
       if (e.key === 'Escape') onClose()
     }
     const onPointer = (e: PointerEvent) => {
-      if (panelRef.current && !panelRef.current.contains(e.target as Node)) onClose()
+      const target = e.target as Element
+      // The toggle button's own pointerdown must not count as "outside" — it
+      // fires before the button's click, so closing here made that click
+      // reopen the panel and the button could never dismiss it.
+      if (target.closest?.('[data-queue-toggle]')) return
+      if (panelRef.current && !panelRef.current.contains(target)) onClose()
     }
     document.addEventListener('keydown', onKey)
     const id = setTimeout(() => document.addEventListener('pointerdown', onPointer))
@@ -709,27 +706,31 @@ function QueuePanel({ onClose }: { onClose: () => void }) {
             Nothing queued yet. Play a track and the rest of its list lands here.
           </li>
         )}
-        {queue.map((t, i) => (
+        {queue.map((t, i) => {
+          // key-based, not index-based: after removing the playing track the
+          // index no longer points at what's audible, but the key always does
+          const isCurrent = !!current && keyOf(t) === keyOf(current)
+          return (
           <li
             key={`${keyOf(t)}-${i}`}
             className={clsx(
               'group flex items-center gap-2 rounded-lg px-2 py-1.5',
-              i === index ? 'bg-ink-800' : 'hover:bg-ink-800/60',
+              isCurrent ? 'bg-ink-800' : 'hover:bg-ink-800/60',
             )}
           >
             <button
-              onClick={() => void playQueue(queue, i)}
-              aria-current={i === index || undefined}
+              onClick={() => void jumpTo(i)}
+              aria-current={isCurrent || undefined}
               className="flex min-w-0 flex-1 items-center gap-2 text-left"
             >
               <Artwork src={t.artwork} alt="" className="h-8 w-8" rounded="rounded" />
               <span className="min-w-0 flex-1">
-                <span className={clsx('block truncate text-xs font-medium', i === index ? 'text-accent' : 'text-white')}>
+                <span className={clsx('block truncate text-xs font-medium', isCurrent ? 'text-accent' : 'text-white')}>
                   {t.title}
                 </span>
                 <span className="block truncate text-[11px] text-ink-400">{t.artist}</span>
               </span>
-              {i === index && <NowPlayingBars className="mr-1 shrink-0" />}
+              {isCurrent && <NowPlayingBars className="mr-1 shrink-0" />}
             </button>
             <button
               onClick={() => removeFromQueue(i)}
@@ -739,7 +740,8 @@ function QueuePanel({ onClose }: { onClose: () => void }) {
               <X size={13} />
             </button>
           </li>
-        ))}
+          )
+        })}
         {queue.length > 0 && (
           <li>
             <QueueTailLoader scrollRoot={listRef} />

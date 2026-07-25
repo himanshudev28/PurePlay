@@ -25,3 +25,8 @@ dist-ssr
 
 # Ignore design folder
 PlayerUIScreen/
+
+# Local environment — .env.example stays tracked as the documented template
+.env
+.env.local
+.env.*.local

@@ -6,8 +6,11 @@
  */
 export function registerServiceWorker(onUpdateReady?: () => void) {
   if (!('serviceWorker' in navigator)) return
+  // enforce what the doc comment promises — in dev the SW caches the shell and
+  // fights Vite's HMR
+  if (!import.meta.env.PROD) return
 
-  window.addEventListener('load', () => {
+  const register = () => {
     void navigator.serviceWorker
       .register('/sw.js')
       .then((reg) => {
@@ -25,7 +28,12 @@ export function registerServiceWorker(onUpdateReady?: () => void) {
       .catch(() => {
         // an unregistrable SW must never break the app
       })
-  })
+  }
+
+  // `load` may already have fired by the time this deferred module runs — a
+  // listener added after the fact never fires and the SW never registers
+  if (document.readyState === 'complete') register()
+  else window.addEventListener('load', register, { once: true })
 }
 
 /** True when the app is running as an installed PWA rather than a browser tab. */

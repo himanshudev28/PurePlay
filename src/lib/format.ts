@@ -7,7 +7,9 @@ export function formatDuration(seconds: number): string {
 
 export function formatCount(n?: number): string {
   if (!n) return '0'
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  // thresholds sit where toFixed(1) rounds up to the next unit, so 999,950
+  // shows as "1.0M" rather than the impossible "1000.0K"
+  if (n >= 999_950) return `${(n / 1_000_000).toFixed(1)}M`
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
   return String(n)
 }

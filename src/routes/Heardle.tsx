@@ -4,6 +4,7 @@ import clsx from 'clsx'
 import type { Track } from '@/types'
 import { source, sourceFor } from '@/services'
 import { usePlayer } from '@/store/player'
+import { copyText } from '@/lib/clipboard'
 import { Artwork, Button, EmptyState, Skeleton, ErrorNote } from '@/components/ui'
 
 /** Snippet length unlocked at each attempt, in seconds. */
@@ -32,7 +33,9 @@ export default function Heardle() {
   const starting = useRef(false)
 
   // the main player must not keep playing underneath the game
-  const pauseMainPlayer = usePlayer((s) => s.toggle)
+  // pause(), not toggle() — if the store flag and the engine ever disagree,
+  // toggle would START the main player on top of the game's snippet
+  const pauseMainPlayer = usePlayer((s) => s.pause)
   const mainPlaying = usePlayer((s) => s.playing)
 
   const attempt = guesses.length
@@ -232,11 +235,15 @@ export default function Heardle() {
   const shareResult = () => {
     const squares = guesses.map((g) => (g.correct ? '🟩' : g.skipped ? '⬜' : '🟥')).join('')
     const tail = status === 'lost' ? '🟥'.repeat(Math.max(0, STAGES.length - guesses.length)) : ''
-    void navigator.clipboard.writeText(
+    void copyText(
       `PurePlay Heardle — ${status === 'won' ? `${guesses.length}/${STAGES.length}` : 'X/6'}\n${squares}${tail}`,
-    )
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1800)
+    ).then((ok) => {
+      // only claim "Copied" when it actually happened — on http:// LAN origins
+      // the clipboard API doesn't exist and the old code showed a false success
+      if (!ok) return
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1800)
+    })
   }
 
   /* ---------------- render ---------------- */

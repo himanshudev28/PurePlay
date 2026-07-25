@@ -120,44 +120,66 @@ export class YouTubeEngine implements PlaybackEngine {
     const videoId = track.id
     this.pendingId = videoId
 
-    try {
-      const YT = await loadApi()
-      // a newer load landed while the API was still downloading
-      if (this.pendingId !== videoId) return
+    const YT = await loadApi()
+    // a newer load landed while the API was still downloading
+    if (this.pendingId !== videoId) return
 
-      if (!this.player) {
-        await new Promise<void>((resolve) => {
-          this.player = new YT.Player(this.container, {
-            width: '100%',
-            height: '100%',
-            videoId,
-            playerVars: {
-              autoplay: 1,
-              playsinline: 1,
-              // keep YouTube's own chrome — required, and it is what makes
-              // the "visible player" obligation genuinely satisfied
-              controls: 1,
-              rel: 0,
+    if (!this.player) {
+      /*
+        The IFrame API REPLACES the element it is given with the iframe, and
+        destroy() removes that iframe without restoring the original node. So
+        the React-owned container must never be handed to YT.Player directly —
+        after one teardown it would be a permanently detached node and every
+        later player would be constructed outside the document. Mount each
+        player on a fresh child instead.
+      */
+      const mount = document.createElement('div')
+      mount.style.width = '100%'
+      mount.style.height = '100%'
+      this.container.appendChild(mount)
+
+      await new Promise<void>((resolve, reject) => {
+        // if onReady never fires (embed-blocked video, blocked iframe), the
+        // promise must still settle or the store spins forever
+        const timeout = setTimeout(
+          () => reject(new Error('YouTube took too long to start')),
+          20000,
+        )
+        this.player = new YT.Player(mount, {
+          width: '100%',
+          height: '100%',
+          videoId,
+          playerVars: {
+            autoplay: 1,
+            playsinline: 1,
+            // keep YouTube's own chrome — required, and it is what makes
+            // the "visible player" obligation genuinely satisfied
+            controls: 1,
+            rel: 0,
+          },
+          events: {
+            onReady: () => {
+              clearTimeout(timeout)
+              resolve()
             },
-            events: {
-              onReady: () => resolve(),
-              onStateChange: (e) => this.onState(e.data, YT),
-              onError: (e) => this.cb.onError(youtubeError(e.data)),
+            onStateChange: (e) => this.onState(e.data, YT),
+            onError: (e) => {
+              clearTimeout(timeout)
+              // during construction this rejects load(); afterwards the store
+              // hears about it through the normal error callback
+              this.cb.onError(youtubeError(e.data))
+              reject(new Error(youtubeError(e.data)))
             },
-          })
+          },
         })
-        this.applyVolume()
-      } else {
-        this.player.loadVideoById(videoId)
-        this.player.playVideo()
-      }
-
-      this.startTicker()
-      this.cb.onLoading(false)
-    } catch (e) {
-      this.cb.onError(e instanceof Error ? e.message : 'YouTube playback failed')
-      this.cb.onLoading(false)
+      })
+      this.applyVolume()
+    } else {
+      this.player.loadVideoById(videoId)
+      this.player.playVideo()
     }
+
+    this.cb.onLoading(false)
   }
 
   private onState(state: number, YT: YTNamespace) {
@@ -165,12 +187,21 @@ export class YouTubeEngine implements PlaybackEngine {
     if (state === S.PLAYING) {
       this.cb.onPlay()
       this.cb.onLoading(false)
+      this.startTicker()
     } else if (state === S.PAUSED) {
       this.cb.onPause()
+      this.stopTicker()
     } else if (state === S.BUFFERING) {
       this.cb.onLoading(true)
     } else if (state === S.ENDED) {
       this.cb.onEnded()
+      this.stopTicker()
+    } else if (state === S.CUED) {
+      // autoplay was rejected (mobile without a gesture) — the player parked
+      // itself cued. Report "paused" so the UI shows a real Play button
+      // instead of a stuck "playing" state with a frozen scrubber.
+      this.cb.onPause()
+      this.cb.onLoading(false)
     }
   }
 
@@ -188,6 +219,13 @@ export class YouTubeEngine implements PlaybackEngine {
         // the iframe can be mid-teardown; a dropped tick is harmless
       }
     }, 250)
+  }
+
+  private stopTicker() {
+    if (this.ticker) {
+      clearInterval(this.ticker)
+      this.ticker = null
+    }
   }
 
   private applyVolume() {
@@ -221,16 +259,16 @@ export class YouTubeEngine implements PlaybackEngine {
 
   teardown() {
     this.pendingId = null
-    if (this.ticker) {
-      clearInterval(this.ticker)
-      this.ticker = null
-    }
+    this.stopTicker()
     try {
       this.player?.destroy()
     } catch {
       // already gone
     }
     this.player = null
+    // destroy() removes the iframe but never restores the mount node it
+    // replaced — sweep whatever is left so the next load starts clean
+    while (this.container.firstChild) this.container.removeChild(this.container.firstChild)
   }
 }
 
