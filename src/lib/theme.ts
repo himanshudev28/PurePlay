@@ -18,6 +18,9 @@ export const THEMES: ThemeColor[] = [
   { id: 'blue', name: 'Ocean Blue', accent: '#3b82f6', soft: '#60a5fa', dim: '#12294f', rgb: '59, 130, 246' },
   { id: 'pink', name: 'Neon Rose', accent: '#ec4899', soft: '#f472b6', dim: '#4a1236', rgb: '236, 72, 153' },
   { id: 'amber', name: 'Cyber Amber', accent: '#f59e0b', soft: '#fbbf24', dim: '#4a2f05', rgb: '245, 158, 11' },
+  // ColorHunt-derived accents
+  { id: 'ember', name: 'Ember Coral', accent: '#e94560', soft: '#ff6b81', dim: '#4a1524', rgb: '233, 69, 96' },
+  { id: 'gold', name: 'Royal Gold', accent: '#f5c542', soft: '#ffd968', dim: '#4a3a0a', rgb: '245, 197, 66' },
 ]
 
 export const DEFAULT_THEME_ID = 'sunset'

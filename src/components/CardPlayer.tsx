@@ -2,7 +2,7 @@ import { Play, Pause, SkipBack, SkipForward, Maximize2, X, Heart, Shuffle } from
 import clsx from 'clsx'
 import { usePlayer } from '@/store/player'
 import { useLibrary } from '@/store/library'
-import { Artwork } from './ui'
+import { Artwork, SeekRange } from './ui'
 import { formatDuration } from '@/lib/format'
 import { usePlayerTheme } from '@/contexts/PlayerThemeContext'
 
@@ -23,7 +23,9 @@ export function CardPlayer() {
   return (
     <div
       className={clsx(
-        'fixed bottom-6 right-6 z-40 w-80 overflow-hidden rounded-3xl border shadow-2xl transition-all duration-300',
+        // On phones the bottom tab bar lives in the same corner — sit above it
+        // and never exceed the viewport width, or navigation becomes unreachable.
+        'fixed bottom-[calc(76px+env(safe-area-inset-bottom,0px))] lg:bottom-6 right-4 lg:right-6 z-40 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-3xl border shadow-2xl transition-all duration-300',
         playerTheme === 'neumorphic'
           ? 'bg-[#d6cfc4] text-stone-800 border-[#c8c0b4]'
           : playerTheme === 'vibrant'
@@ -38,6 +40,10 @@ export function CardPlayer() {
           ? 'bg-gradient-to-b from-slate-950 via-indigo-950 to-purple-950 text-white border-indigo-800/40'
           : playerTheme === 'minimal'
           ? 'bg-gray-950 text-white border-gray-800'
+          : playerTheme === 'midnight-ember'
+          ? 'bg-gradient-to-b from-[#1a1a2e] to-[#0f0f1e] text-white border-[#e94560]/30'
+          : playerTheme === 'emerald-gold'
+          ? 'bg-gradient-to-b from-[#0f2d22] to-[#071a12] text-white border-[#f5c542]/30'
           : 'glass text-white border-ink-800'
       )}
     >
@@ -83,16 +89,7 @@ export function CardPlayer() {
             className="absolute inset-y-0 left-0 rounded-full bg-accent"
             style={{ width: `${pct}%` }}
           />
-          <input
-            type="range"
-            min={0}
-            max={s.duration || 0}
-            step={0.1}
-            value={s.position}
-            onChange={(e) => s.seek(Number(e.target.value))}
-            aria-label="Seek"
-            className="seek-bar absolute inset-0 h-full w-full cursor-pointer opacity-0 group-hover:opacity-100"
-          />
+          <SeekRange />
         </div>
         <div className="flex items-center justify-between text-[10px] tabular-nums opacity-60">
           <span>{formatDuration(s.position)}</span>
@@ -130,6 +127,17 @@ export function CardPlayer() {
           <Heart size={18} fill={fav ? 'currentColor' : 'none'} />
         </button>
       </div>
+
+      {/* Without this, a failed stream in card view is pure silence — the play
+          button just appears to do nothing. */}
+      {s.error && (
+        <div role="alert" className="flex items-center justify-between gap-2 border-t border-white/10 bg-black/30 px-4 py-2">
+          <p className="min-w-0 truncate text-[11px] opacity-80">{s.error}</p>
+          <button onClick={s.dismissError} className="rounded p-1 opacity-60 hover:opacity-100" aria-label="Dismiss error">
+            <X size={12} />
+          </button>
+        </div>
+      )}
     </div>
   )
 }

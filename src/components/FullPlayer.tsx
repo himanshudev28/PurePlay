@@ -10,8 +10,9 @@ import { useLibrary } from '@/store/library'
 import { useDownloads } from '@/hooks/useDownloads'
 import { fetchLyrics, type LyricsData } from '@/services/lyrics'
 import { extractColorFromImage } from '@/lib/colorExtractor'
+import { copyText } from '@/lib/clipboard'
 import { formatDuration } from '@/lib/format'
-import { Artwork, NowPlayingBars, QueueTailLoader } from './ui'
+import { Artwork, NowPlayingBars, QueueTailLoader, SeekRange } from './ui'
 import { CastButton } from './CastButton'
 import { keyOf } from '@/lib/db'
 import { usePlayerTheme } from '@/contexts/PlayerThemeContext'
@@ -20,23 +21,6 @@ const INITIAL_BACKDROP = 'linear-gradient(180deg, rgba(30, 20, 50, 0.98) 0%, rgb
 
 const prefersReducedMotion = () =>
   typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
-
-function legacyCopy(text: string): boolean {
-  try {
-    const ta = document.createElement('textarea')
-    ta.value = text
-    ta.setAttribute('readonly', '')
-    ta.style.position = 'fixed'
-    ta.style.opacity = '0'
-    document.body.appendChild(ta)
-    ta.select()
-    const ok = document.execCommand('copy')
-    document.body.removeChild(ta)
-    return ok
-  } catch {
-    return false
-  }
-}
 
 export function FullPlayer() {
   const s = usePlayer()
@@ -158,13 +142,7 @@ export function FullPlayer() {
       }
     }
 
-    try {
-      await navigator.clipboard.writeText(url)
-      done('copied')
-      return
-    } catch {
-      done(legacyCopy(url) ? 'copied' : 'failed')
-    }
+    done((await copyText(url)) ? 'copied' : 'failed')
   }, [current])
 
   const togglePanel = (tab: 'lyrics' | 'queue' | 'info') => {
@@ -176,13 +154,29 @@ export function FullPlayer() {
     }
   }
 
+  // Switching to a video-less track leaves the (disabled) Video pill selected
+  // otherwise — the mode must follow what's actually available.
+  const videoActive = s.videoActive
+  useEffect(() => {
+    if (!videoActive) setMode('song')
+  }, [videoActive])
+
   if (!open || !current) return null
 
   const fav = isFavorite(current)
   const pct = s.duration ? (s.position / s.duration) * 100 : 0
   const videoAvailable = s.videoActive
 
-  // ── Shared transport controls ──────────────────────────────────────────
+  /*
+    These are plain render helpers CALLED as functions (`{ScrubBar({})}`), not
+    mounted as JSX components. Defined inside the component, their identity
+    changes every render — and this dialog re-renders ~4×/s on timeupdates —
+    so JSX component usage made React remount the whole subtree each tick:
+    queue/lyrics scroll positions reset, drags dropped, observers rebuilt.
+    Function calls inline their output into THIS component's element tree, so
+    reconciliation sees stable elements. (Same defect PlayerBar already fixed
+    by hoisting; these need the parent's state, so they stay as helpers.)
+  */
   const ScrubBar = ({ className = '' }: { className?: string }) => (
     <div className={clsx('w-full space-y-2 px-2', className)}>
       <div className="group relative h-2 cursor-pointer rounded-full bg-white/20">
@@ -191,17 +185,7 @@ export function FullPlayer() {
           className="absolute inset-y-0 left-0 rounded-full bg-accent"
           style={{ width: `${pct}%` }}
         />
-        <input
-          type="range"
-          min={0}
-          max={s.duration || 0}
-          step={0.1}
-          value={s.position}
-          onChange={(e) => s.seek(Number(e.target.value))}
-          aria-label="Seek"
-          aria-valuetext={`${formatDuration(s.position)} of ${formatDuration(s.duration)}`}
-          className="seek-bar absolute inset-0 h-full w-full cursor-pointer opacity-0 group-hover:opacity-100"
-        />
+        <SeekRange />
       </div>
       <div className="flex items-center justify-between text-xs font-medium tabular-nums text-white/80">
         <span>{formatDuration(s.position)}</span>
@@ -396,11 +380,13 @@ export function FullPlayer() {
         {activeTab === 'queue' && (
           <ul ref={queueListRef} className="scrollbar-thin flex-1 space-y-1.5 overflow-y-auto py-2 pr-2">
             {s.queue.map((t, idx) => {
-              const isCurrent = idx === s.index
+              // key-based, not index-based: after removing the playing track
+              // the index no longer matches what's audible; the key always does
+              const isCurrent = !!current && keyOf(t) === keyOf(current)
               return (
                 <li key={`${keyOf(t)}-${idx}`}>
                   <button
-                    onClick={() => void s.playQueue(s.queue, idx)}
+                    onClick={() => void s.jumpTo(idx)}
                     aria-current={isCurrent || undefined}
                     className={clsx('flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition', isCurrent ? 'bg-white/20' : 'hover:bg-white/10')}
                   >
@@ -507,11 +493,11 @@ export function FullPlayer() {
             <h1 className="font-display text-2xl font-extrabold tracking-tight text-white">{current.title}</h1>
           </div>
 
-          <ScrubBar className={showRightPanel ? '' : 'max-w-md'} />
-          <Transport />
+          {ScrubBar({ className: showRightPanel ? '' : 'max-w-md' })}
+          {Transport({})}
 
           <div className="flex items-center gap-3">
-            <FavButton />
+            {FavButton()}
             <button onClick={() => void handleShare()} className="flex items-center gap-1.5 rounded-full bg-white/10 px-4 py-2 text-xs font-semibold text-white transition hover:bg-white/20">
               {shareState === 'copied' ? <Check size={14} /> : <Share2 size={14} />} {shareState === 'copied' ? 'Copied' : 'Share'}
             </button>
@@ -526,9 +512,9 @@ export function FullPlayer() {
             </button>
           )}
 
-          {showRightPanel && <RightPanel className="w-full max-w-md h-64 border-rose-500/20 bg-rose-950/40" />}
+          {showRightPanel && RightPanel({ className: 'w-full max-w-md h-64 border-rose-500/20 bg-rose-950/40' })}
         </div>
-        <MobileFooter className="border-rose-500/20 bg-rose-950/40" />
+        {MobileFooter({ className: 'border-rose-500/20 bg-rose-950/40' })}
       </div>
     )
   }
@@ -566,11 +552,11 @@ export function FullPlayer() {
             <h1 className="font-display text-2xl font-extrabold tracking-tight text-white">{current.title}</h1>
           </div>
 
-          <ScrubBar className={showRightPanel ? '' : 'max-w-md'} />
-          <Transport />
+          {ScrubBar({ className: showRightPanel ? '' : 'max-w-md' })}
+          {Transport({})}
 
           <div className="flex items-center gap-3">
-            <FavButton />
+            {FavButton()}
             <button onClick={() => void handleShare()} className="flex items-center gap-1.5 rounded-full bg-white/10 px-4 py-2 text-xs font-semibold text-white transition hover:bg-white/20">
               {shareState === 'copied' ? <Check size={14} /> : <Share2 size={14} />} {shareState === 'copied' ? 'Copied' : 'Share'}
             </button>
@@ -585,9 +571,9 @@ export function FullPlayer() {
             </button>
           )}
 
-          {showRightPanel && <RightPanel className="w-full max-w-md h-64 border-orange-500/20 bg-orange-950/40" />}
+          {showRightPanel && RightPanel({ className: 'w-full max-w-md h-64 border-orange-500/20 bg-orange-950/40' })}
         </div>
-        <MobileFooter className="border-orange-500/20 bg-orange-950/40" />
+        {MobileFooter({ className: 'border-orange-500/20 bg-orange-950/40' })}
       </div>
     )
   }
@@ -625,11 +611,11 @@ export function FullPlayer() {
             <h1 className="font-display text-2xl font-extrabold tracking-tight text-white">{current.title}</h1>
           </div>
 
-          <ScrubBar className={showRightPanel ? '' : 'max-w-md'} />
-          <Transport />
+          {ScrubBar({ className: showRightPanel ? '' : 'max-w-md' })}
+          {Transport({})}
 
           <div className="flex items-center gap-3">
-            <FavButton />
+            {FavButton()}
             <button onClick={() => void handleShare()} className="flex items-center gap-1.5 rounded-full bg-white/10 px-4 py-2 text-xs font-semibold text-white transition hover:bg-white/20">
               {shareState === 'copied' ? <Check size={14} /> : <Share2 size={14} />} {shareState === 'copied' ? 'Copied' : 'Share'}
             </button>
@@ -644,9 +630,9 @@ export function FullPlayer() {
             </button>
           )}
 
-          {showRightPanel && <RightPanel className="w-full max-w-md h-64 border-cyan-500/20 bg-teal-950/40" />}
+          {showRightPanel && RightPanel({ className: 'w-full max-w-md h-64 border-cyan-500/20 bg-teal-950/40' })}
         </div>
-        <MobileFooter className="border-cyan-500/20 bg-teal-950/40" />
+        {MobileFooter({ className: 'border-cyan-500/20 bg-teal-950/40' })}
       </div>
     )
   }
@@ -684,11 +670,11 @@ export function FullPlayer() {
             <h1 className="font-display text-2xl font-extrabold tracking-tight text-white">{current.title}</h1>
           </div>
 
-          <ScrubBar className={showRightPanel ? '' : 'max-w-md'} />
-          <Transport />
+          {ScrubBar({ className: showRightPanel ? '' : 'max-w-md' })}
+          {Transport({})}
 
           <div className="flex items-center gap-3">
-            <FavButton />
+            {FavButton()}
             <button onClick={() => void handleShare()} className="flex items-center gap-1.5 rounded-full bg-white/10 px-4 py-2 text-xs font-semibold text-white transition hover:bg-white/20">
               {shareState === 'copied' ? <Check size={14} /> : <Share2 size={14} />} {shareState === 'copied' ? 'Copied' : 'Share'}
             </button>
@@ -703,9 +689,9 @@ export function FullPlayer() {
             </button>
           )}
 
-          {showRightPanel && <RightPanel className="w-full max-w-md h-64 border-indigo-500/20 bg-indigo-950/40" />}
+          {showRightPanel && RightPanel({ className: 'w-full max-w-md h-64 border-indigo-500/20 bg-indigo-950/40' })}
         </div>
-        <MobileFooter className="border-indigo-500/20 bg-indigo-950/40" />
+        {MobileFooter({ className: 'border-indigo-500/20 bg-indigo-950/40' })}
       </div>
     )
   }
@@ -746,7 +732,7 @@ export function FullPlayer() {
               <div className="w-full space-y-2">
                 <div className="group relative h-1 cursor-pointer rounded-full bg-gray-800">
                   <div aria-hidden className="absolute inset-y-0 left-0 rounded-full bg-white" style={{ width: `${pct}%` }} />
-                  <input type="range" min={0} max={s.duration || 0} step={0.1} value={s.position} onChange={(e) => s.seek(Number(e.target.value))} aria-label="Seek" className="seek-bar absolute inset-0 h-full w-full cursor-pointer opacity-0 group-hover:opacity-100" />
+                  <SeekRange />
                 </div>
                 <div className="flex items-center justify-between text-[11px] tabular-nums text-gray-500">
                   <span>{formatDuration(s.position)}</span>
@@ -765,7 +751,7 @@ export function FullPlayer() {
               </div>
 
               <div className="flex items-center gap-3">
-                <FavButton />
+                {FavButton()}
                 <button onClick={() => togglePanel('lyrics')} className={clsx('rounded-full px-3.5 py-1.5 text-xs font-semibold transition', showRightPanel ? 'bg-white text-gray-950' : 'bg-gray-800 text-gray-400')}>
                   Lyrics & Queue
                 </button>
@@ -774,11 +760,11 @@ export function FullPlayer() {
           </div>
 
           {showRightPanel && (
-            <RightPanel className="w-full max-w-4xl h-[400px] lg:h-[500px] border-gray-800 bg-gray-900/60" />
+            RightPanel({ className: 'w-full max-w-4xl h-[400px] lg:h-[500px] border-gray-800 bg-gray-900/60' })
           )}
         </div>
 
-        <MobileFooter className="border-gray-800 bg-gray-950" />
+        {MobileFooter({ className: 'border-gray-800 bg-gray-950' })}
       </div>
     )
   }
@@ -805,7 +791,7 @@ export function FullPlayer() {
         <button onClick={closeFullPlayer} className="rounded-full p-2 text-white/80 transition hover:bg-white/10 hover:text-white" title="Minimize player">
           <ChevronDown size={24} />
         </button>
-        <ModeBar />
+        {ModeBar()}
         <div className="flex items-center gap-1">
           <button onClick={() => togglePanel('lyrics')} aria-pressed={activeTab === 'lyrics' && showRightPanel} className={clsx('rounded-full p-2 transition hover:bg-white/10 lg:hidden', activeTab === 'lyrics' && showRightPanel ? 'text-accent' : 'text-white/70')}>
             <FileText size={21} />
@@ -835,7 +821,7 @@ export function FullPlayer() {
               </button>
             )}
           </div>
-          <ShareResult />
+          {ShareResult()}
           <div className={clsx('relative aspect-square w-full overflow-hidden rounded-3xl border border-white/20 shadow-2xl transition-all duration-300 glow-accent', showRightPanel ? 'max-w-[270px] sm:max-w-[310px]' : 'max-w-[340px] sm:max-w-[420px]')}>
             <Artwork src={current.artwork} alt="" className="h-full w-full" rounded="rounded-3xl" />
           </div>
@@ -843,9 +829,9 @@ export function FullPlayer() {
             <p className="truncate text-xs font-semibold tracking-widest text-white/80 uppercase">{current.artist}</p>
             <h1 className="font-display line-clamp-2 text-2xl font-extrabold tracking-tight text-white sm:text-4xl">{current.title}</h1>
           </div>
-          <ScrubBar />
-          <Transport />
-          <div className="flex w-full max-w-xs items-center justify-center pt-1"><FavButton /></div>
+          {ScrubBar({})}
+          {Transport({})}
+          <div className="flex w-full max-w-xs items-center justify-center pt-1">{FavButton()}</div>
           {!showRightPanel && (
             <button
               onClick={() => setShowRightPanel(true)}
@@ -855,9 +841,9 @@ export function FullPlayer() {
             </button>
           )}
         </div>
-        <RightPanel className="h-[420px] lg:col-span-7 lg:h-[580px]" />
+        {RightPanel({ className: 'h-[420px] lg:col-span-7 lg:h-[580px]' })}
       </div>
-      <MobileFooter />
+      {MobileFooter({})}
     </div>
   )
 }
