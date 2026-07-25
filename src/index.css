@@ -92,6 +92,17 @@
     border-color: #b8a990 !important;
   }
 
+  /* …but the full-screen player is a dark immersive overlay on every theme.
+     Undo the light-scheme darkening inside it, or on Neumorphic the title and
+     controls turn dark-on-dark and vanish. */
+  :root[data-theme-scheme="light"] .player-surface .text-white { color: #ffffff !important; }
+  :root[data-theme-scheme="light"] .player-surface .text-ink-400 { color: #82828f !important; }
+  :root[data-theme-scheme="light"] .player-surface .text-ink-300 { color: #9a9aab !important; }
+  :root[data-theme-scheme="light"] .player-surface .text-ink-200 { color: #c6c6d2 !important; }
+  :root[data-theme-scheme="light"] .player-surface .bg-ink-900 { background-color: #0c0c0e !important; }
+  :root[data-theme-scheme="light"] .player-surface .bg-ink-800 { background-color: #17171b !important; }
+  :root[data-theme-scheme="light"] .player-surface .border-ink-800 { border-color: #17171b !important; }
+
 
 
   /* Every interactive element gets the same visible focus ring. Without this

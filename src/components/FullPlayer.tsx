@@ -779,7 +779,10 @@ export function FullPlayer() {
       aria-modal="true"
       aria-label={`Now playing: ${current.title}`}
       tabIndex={-1}
-      className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-[#0b0914] text-white outline-none"
+      // player-surface: this is a dark immersive overlay on EVERY theme, so the
+      // light-scheme (neumorphic) overrides that darken .text-white etc. must be
+      // undone inside it — otherwise the title/controls go dark-on-dark. (see index.css)
+      className="player-surface fixed inset-0 z-50 flex flex-col overflow-hidden bg-[#0b0914] text-white outline-none"
     >
       <div aria-hidden className="pointer-events-none absolute inset-0 transition-[background] duration-700" style={{ background: bgGradient }}>
         {current.artwork && (
