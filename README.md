@@ -3,6 +3,7 @@
 # 🎧 PurePlay
 ### *Next-Generation, Ad-Free Music & Audio Streaming Experience*
 
+[![Live Demo](https://img.shields.io/badge/Live_Demo-PurePlay-FF6B4A?style=for-the-badge&logo=vercel&logoColor=white)](https://pure-play-pearl.vercel.app/)
 [![React](https://img.shields.io/badge/React-18.x-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://reactjs.org/)
 [![Vite](https://img.shields.io/badge/Vite-5.x-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
@@ -10,11 +11,11 @@
 [![License](https://img.shields.io/badge/License-MIT-green.style=for-the-badge)](LICENSE)
 
 <p align="center">
+  <a href="https://pure-play-pearl.vercel.app/"><strong>🌐 Live App Demo</strong></a> •
   <a href="#-key-features">Key Features</a> •
   <a href="#-player-appearance-themes">Player Themes</a> •
   <a href="#-screenshots">Screenshots</a> •
-  <a href="#-tech-stack">Tech Stack</a> •
-  <a href="#-getting-started">Getting Started</a>
+  <a href="#-tech-stack">Tech Stack</a>
 </p>
 
 ---
