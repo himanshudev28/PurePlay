@@ -11,11 +11,14 @@ import { getQuality, type Quality } from '@/lib/prefs'
   request against the next mirror automatically.
 */
 const ENV_BASE = (import.meta.env.VITE_JIOSAAVN_API as string | undefined)?.replace(/\/$/, '')
-const API_BASES = [
-  ...(ENV_BASE ? [ENV_BASE] : []),
-  'https://saavn.sumit.co/api',
-  'https://saavn.dev/api',
-]
+const API_BASES = ENV_BASE
+  ? [ENV_BASE, 'https://saavn.sumit.co/api']
+  : import.meta.env.PROD
+    ? // On Vercel: go through our own same-origin edge proxy (no CORS, CDN-cached
+      // so the upstream is barely hit). Public mirrors are a last resort.
+      ['/api/saavn', 'https://saavn.sumit.co/api', 'https://saavn.dev/api']
+    : // Local dev has no proxy, so hit the public mirrors directly.
+      ['https://saavn.sumit.co/api', 'https://saavn.dev/api']
 /** URLs are built with this; apiFetch swaps in the other mirrors on failure. */
 const API_BASE = API_BASES[0]
 
