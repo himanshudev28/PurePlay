@@ -46,10 +46,16 @@ export default function Search() {
     const controller = new AbortController()
     setLoading(true)
     const timer = setTimeout(() => {
-      source
-        .search(q, controller.signal)
-        .then((r) => {
-          setResults(r)
+      // The combined /search endpoint returns only ~3 songs; /search/songs
+      // (searchTracks) honours a real limit. Pull the full song list from there
+      // and keep artists + playlists from the combined search.
+      const tracksP = source.searchTracks
+        ? source.searchTracks(q, 40, controller.signal).catch(() => null)
+        : Promise.resolve(null)
+
+      Promise.all([source.search(q, controller.signal), tracksP])
+        .then(([r, fullTracks]) => {
+          setResults({ ...r, tracks: fullTracks && fullTracks.length ? fullTracks : r.tracks })
           setError(null)
         })
         .catch((e: Error) => {

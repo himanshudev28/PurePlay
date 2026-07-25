@@ -185,7 +185,11 @@ export const usePlayer = create<PlayerState>((set, get) => ({
     if (!activeEngine || !get().current) return
     if (get().playing) {
       activeEngine.pause()
+      // reflect intent immediately; the 'pause' event will confirm. Without
+      // this the flag could stay true and the next click read the wrong state.
+      set({ playing: false })
     } else {
+      set({ playing: true })
       // a successful play means any previous failure is no longer relevant
       void activeEngine
         .play()
@@ -429,7 +433,11 @@ async function load(
     await engine.load(track)
     if (token !== loadSeq) return
 
-    set({ loading: false, fromCache: isFromCache() })
+    // engine.load() only resolves once el.play() has actually started, so the
+    // track IS playing here. Assert it rather than waiting on the 'play' event
+    // to land — a missed event left `playing` false while audio played, which
+    // made the pause button need a second click to register.
+    set({ loading: false, fromCache: isFromCache(), playing: true })
     updateMediaSession(track, get)
 
     // Prefetch the radio tail well before the playhead reaches the end.
