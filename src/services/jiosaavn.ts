@@ -3,16 +3,31 @@ import { SourceError } from './source'
 import type { Track, Artist, Collection, SearchResults } from '@/types'
 import { getQuality, type Quality } from '@/lib/prefs'
 
-const API_BASE = 'https://saavn.sumit.co/api'
+/*
+  API mirrors, tried in order. Set VITE_JIOSAAVN_API in .env to put your own
+  (self-hosted saavn.dev) instance first — that's the real fix for reliability,
+  since the public instances rate-limit and occasionally go down. The rest are
+  community fallbacks: if the primary 429s or fails, apiFetch retries the same
+  request against the next mirror automatically.
+*/
+const ENV_BASE = (import.meta.env.VITE_JIOSAAVN_API as string | undefined)?.replace(/\/$/, '')
+const API_BASES = [
+  ...(ENV_BASE ? [ENV_BASE] : []),
+  'https://saavn.sumit.co/api',
+  'https://saavn.dev/api',
+]
+/** URLs are built with this; apiFetch swaps in the other mirrors on failure. */
+const API_BASE = API_BASES[0]
 
 /*
   The public JioSaavn API rate-limits bursts with HTTP 429 — and a home page of
-  shelves fires ~25 requests at once. Its 429 responses also omit CORS headers,
+  shelves fires ~20 requests at once. Its 429 responses also omit CORS headers,
   so in the browser a throttled request surfaces as an opaque "Failed to fetch".
 
   apiFetch is a drop-in for fetch() that:
     • caps concurrency so we never fire the whole burst at once,
-    • retries 429s (and transient network failures) with backoff + jitter,
+    • retries 429s / network failures with backoff, then fails over to the next
+      mirror,
     • caches successful GETs briefly, so re-renders and back-navigation are free.
 */
 const MAX_CONCURRENT = 2
@@ -31,6 +46,28 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const CACHE_TTL = 5 * 60 * 1000
 const responseCache = new Map<string, { at: number; body: string; status: number }>()
 
+/** One mirror, with a couple of backoff retries for 429 / transient failures. */
+async function fetchWithRetry(target: string, init?: RequestInit, attempts = 2): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    if (init?.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+    try {
+      const res = await fetch(target, init)
+      if (res.status === 429 && attempt < attempts) {
+        await sleep(500 * (attempt + 1) + Math.random() * 300)
+        continue
+      }
+      return res
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') throw e
+      if (attempt < attempts) {
+        await sleep(500 * (attempt + 1) + Math.random() * 300)
+        continue
+      }
+      throw e
+    }
+  }
+}
+
 async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
   const cacheable = !init?.method || init.method === 'GET'
   if (cacheable) {
@@ -40,31 +77,29 @@ async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
 
   await acquire()
   try {
-    for (let attempt = 0; ; attempt++) {
-      if (init?.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
-      const backoff = () => sleep(500 * (attempt + 1) + Math.random() * 300)
+    let lastError: unknown
+    for (const base of API_BASES) {
+      const target = base === API_BASE ? url : url.replace(API_BASE, base)
       try {
-        const res = await fetch(url, init)
-        if (res.status === 429 && attempt < 3) {
-          await backoff()
-          continue
+        const res = await fetchWithRetry(target, init)
+        if (res.ok) {
+          if (cacheable) {
+            const body = await res.text()
+            responseCache.set(url, { at: Date.now(), body, status: res.status })
+            return new Response(body, { status: res.status })
+          }
+          return res
         }
-        if (cacheable && res.ok) {
-          const body = await res.text()
-          responseCache.set(url, { at: Date.now(), body, status: res.status })
-          return new Response(body, { status: res.status })
-        }
-        return res
+        // 4xx (not-found/bad request) is the same on every mirror — don't waste
+        // time failing over. Only rate-limits and server errors get another try.
+        if (res.status !== 429 && res.status < 500) return res
+        lastError = new Error(`HTTP ${res.status}`)
       } catch (e) {
-        // AbortError is intentional; anything else (network / CORS-less 429) retries
         if (e instanceof DOMException && e.name === 'AbortError') throw e
-        if (attempt < 3) {
-          await backoff()
-          continue
-        }
-        throw e
+        lastError = e
       }
     }
+    throw lastError instanceof Error ? lastError : new Error('All music API mirrors are unavailable')
   } finally {
     release()
   }
