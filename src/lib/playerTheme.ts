@@ -236,19 +236,24 @@ export const THEME_CSS_VARS: Record<PlayerThemeId, ThemeCssVars> = {
     '--shell-color-scheme': 'dark',
   },
   glasspro: {
-    '--shell-bg': '#080c18',
-    '--shell-sidebar-bg': 'rgba(10,15,30,0.80)',
-    '--shell-topbar-bg': 'rgba(10,15,30,0.70)',
-    '--shell-border': 'rgba(255,255,255,0.08)',
-    '--shell-nav-text': 'rgba(148,210,255,0.55)',
-    '--shell-nav-hover-bg': 'rgba(255,255,255,0.07)',
+    // A cinematic gradient so the frosted-glass panels have colour to blur over
+    // (see the [data-player-theme="glasspro"] rules in index.css).
+    '--shell-bg':
+      'radial-gradient(1200px 600px at 15% -10%, #1e3a8a 0%, transparent 55%), radial-gradient(1000px 700px at 100% 0%, #0e7490 0%, transparent 50%), linear-gradient(160deg, #0a0f1f 0%, #0b1226 55%, #070b16 100%)',
+    '--shell-sidebar-bg': 'rgba(15,23,42,0.45)',
+    '--shell-topbar-bg': 'rgba(15,23,42,0.35)',
+    '--shell-border': 'rgba(255,255,255,0.12)',
+    '--shell-nav-text': 'rgba(203,225,255,0.7)',
+    '--shell-nav-hover-bg': 'rgba(255,255,255,0.10)',
     '--shell-nav-active': '#38bdf8',
+    // Dark translucent surfaces so panels read as frosted glass over the
+    // gradient while text stays high-contrast (index.css adds the blur).
     '--color-ink-950': '#080c18',
-    '--color-ink-900': '#0f172a',
-    '--color-ink-850': '#141e33',
-    '--color-ink-800': '#1e293b',
-    '--color-ink-700': '#334155',
-    '--color-ink-400': '#94a3b8',
+    '--color-ink-900': 'rgba(17,26,48,0.55)',
+    '--color-ink-850': 'rgba(22,32,58,0.58)',
+    '--color-ink-800': 'rgba(38,52,82,0.60)',
+    '--color-ink-700': 'rgba(56,74,110,0.60)',
+    '--color-ink-400': '#a5c4e0',
     '--color-ink-300': '#cbd5e1',
     '--color-ink-200': '#f8fafc',
     '--shell-color-scheme': 'dark',
@@ -376,6 +381,8 @@ export function applyThemeCssVars(id: PlayerThemeId, syncAccent = getSyncAccentW
 
   root.style.colorScheme = vars['--shell-color-scheme']
   root.setAttribute('data-theme-scheme', vars['--shell-color-scheme'])
+  // Lets index.css target a specific theme (e.g. the Glass Pro frosting rules).
+  root.setAttribute('data-player-theme', theme.id)
 
   if (syncAccent && theme.accentThemeId) {
     applyTheme(theme.accentThemeId)

@@ -228,6 +228,30 @@
     -webkit-backdrop-filter: blur(20px) saturate(1.5);
   }
 
+  /* ── Glass Pro: frost every surface over the cinematic gradient backdrop ──
+     Scoped to the theme so it never affects the others. `[class~='…']` matches
+     the exact utility token, so hover-only variants (hover:bg-ink-800) and
+     opacity variants aren't caught — only real panels get the blur. */
+  :root[data-player-theme='glasspro'] .glass {
+    background: rgba(255, 255, 255, 0.07);
+    backdrop-filter: blur(26px) saturate(1.7);
+    -webkit-backdrop-filter: blur(26px) saturate(1.7);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+  }
+  :root[data-player-theme='glasspro'] :is(
+      [class~='bg-ink-900'],
+      [class~='bg-ink-900/60'],
+      [class~='bg-ink-900/50'],
+      [class~='bg-ink-900/40'],
+      [class~='bg-ink-850'],
+      [class~='bg-black/40'],
+      [class~='bg-black/30']
+    ) {
+    backdrop-filter: blur(18px) saturate(1.45);
+    -webkit-backdrop-filter: blur(18px) saturate(1.45);
+    border-color: rgba(255, 255, 255, 0.12);
+  }
+
   /* glow accent */
   .glow-accent {
     box-shadow:
