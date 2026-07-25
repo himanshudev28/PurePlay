@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Dancing+Script:wght@700&family=Pacifico&display=swap');
 @import 'tailwindcss';
 
 @theme {
@@ -7,10 +8,6 @@
   --color-ink-800: #17171b;
   --color-ink-700: #232329;
   --color-ink-600: #34343d;
-  /* ink-400 is the workhorse for secondary text (artists, durations, labels).
-     The previous #6c6c7a measured 3.9:1 on ink-950 — below the 4.5:1 WCAG AA
-     floor for body text. #82828f is 5.3:1 on ink-950 and 4.7:1 on ink-800,
-     so it clears AA everywhere it is actually used. */
   --color-ink-400: #82828f;
   --color-ink-300: #9a9aab;
   --color-ink-200: #c6c6d2;
@@ -18,14 +15,17 @@
   --color-accent: #ff6b4a;
   --color-accent-soft: #ff8a6d;
   --color-accent-dim: #4a2118;
-  /* channels only, so glows/tints can be composed at any alpha and still
-     follow the user's chosen theme (see lib/theme.ts) */
   --color-accent-rgb: 255, 107, 74;
 
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-display: 'Montserrat', 'Inter', system-ui, sans-serif;
+  --font-handwritten: 'Caveat', 'Dancing Script', 'Pacifico', cursive;
 
   --radius-card: 14px;
+}
+
+.font-handwritten {
+  font-family: 'Caveat', 'Dancing Script', 'Pacifico', cursive;
 }
 
 /*

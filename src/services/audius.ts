@@ -2,7 +2,7 @@ import type { MusicSource } from './source'
 import { SourceError } from './source'
 import type { Track, Artist, Collection, SearchResults } from '@/types'
 
-const APP_NAME = 'ListenFreeClone'
+const APP_NAME = 'PurePlay'
 const DISCOVERY = 'https://api.audius.co'
 
 /**

@@ -1,13 +1,23 @@
+import mqtt from 'mqtt'
 import type { Track } from '@/types'
 
 /**
  * Synced listening rooms.
  *
- * Transport is pluggable. In dev (and with no server configured) we use a
- * BroadcastChannel so you can open two tabs and watch sync work for real.
- * Point VITE_ROOM_WS at a websocket server and the same protocol goes remote —
- * the message shapes below are exactly what the server needs to relay.
+ * Transport is pluggable, tried in this order:
+ *   1. A raw WebSocket relay, if VITE_ROOM_WS is set (self-hosted — see
+ *      server/room-relay.mjs).
+ *   2. Otherwise a public MQTT-over-WebSocket broker. This needs NO server of
+ *      our own and works on serverless hosts like Vercel, because the browser
+ *      talks straight to the broker. Override the broker with VITE_ROOM_BROKER.
+ *   3. If neither can connect, a BroadcastChannel so same-device tabs still sync.
+ *
+ * The message shapes below are all any transport ever carries.
  */
+
+/** Public MQTT broker (WSS) — free, no account, reachable from HTTPS pages. */
+const DEFAULT_BROKER = 'wss://broker.emqx.io:8084/mqtt'
+const roomTopic = (roomId: string) => `pureplay/room/${roomId}`
 
 export interface RoomMember {
   id: string
@@ -37,43 +47,63 @@ export const HARD_SEEK_THRESHOLD = 2.0
 /** Below this, ignore — seeking would be more disruptive than the drift. */
 export const DRIFT_DEADZONE = 0.35
 
-export function connectRoom(roomId: string, onMessage: Handler): RoomTransport {
-  const wsUrl = import.meta.env.VITE_ROOM_WS as string | undefined
-
-  if (wsUrl) {
-    const ws = new WebSocket(`${wsUrl}?room=${encodeURIComponent(roomId)}`)
-    const queued: RoomMessage[] = []
-
-    ws.addEventListener('open', () => {
-      queued.splice(0).forEach((m) => ws.send(JSON.stringify(m)))
-    })
-    ws.addEventListener('message', (e) => {
-      try {
-        onMessage(JSON.parse(e.data as string) as RoomMessage)
-      } catch {
-        // ignore malformed frames rather than tearing the room down
-      }
-    })
-
-    return {
-      send(msg) {
-        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg))
-        else queued.push(msg)
-      },
-      close: () => ws.close(),
-    }
-  }
-
-  // local fallback — same protocol, cross-tab only
+/** Cross-tab transport: works with zero setup, but only on this one device. */
+function broadcastTransport(roomId: string, onMessage: Handler): RoomTransport {
   const ch = new BroadcastChannel(`lf:room:${roomId}`)
   const listener = (e: MessageEvent) => onMessage(e.data as RoomMessage)
   ch.addEventListener('message', listener)
-
   return {
     send: (msg) => ch.postMessage(msg),
     close: () => {
       ch.removeEventListener('message', listener)
       ch.close()
+    },
+  }
+}
+
+export function connectRoom(roomId: string, onMessage: Handler): RoomTransport {
+  const wsUrl = import.meta.env.VITE_ROOM_WS as string | undefined
+
+  // No server configured — cross-tab only, same as before.
+  if (!wsUrl) return broadcastTransport(roomId, onMessage)
+
+  let ws: WebSocket | null = new WebSocket(`${wsUrl}?room=${encodeURIComponent(roomId)}`)
+  let opened = false
+  let fallback: RoomTransport | null = null
+  const queued: RoomMessage[] = []
+
+  // If the server can't be reached, don't leave the room dead — degrade to the
+  // cross-tab channel so at least same-device sync keeps working.
+  const degrade = () => {
+    if (fallback || opened) return
+    ws = null
+    fallback = broadcastTransport(roomId, onMessage)
+    queued.splice(0).forEach((m) => fallback!.send(m))
+  }
+
+  ws.addEventListener('open', () => {
+    opened = true
+    queued.splice(0).forEach((m) => ws!.send(JSON.stringify(m)))
+  })
+  ws.addEventListener('message', (e) => {
+    try {
+      onMessage(JSON.parse(e.data as string) as RoomMessage)
+    } catch {
+      // ignore malformed frames rather than tearing the room down
+    }
+  })
+  ws.addEventListener('error', degrade)
+  ws.addEventListener('close', degrade)
+
+  return {
+    send(msg) {
+      if (fallback) return fallback.send(msg)
+      if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg))
+      else queued.push(msg)
+    },
+    close() {
+      if (fallback) fallback.close()
+      else ws?.close()
     },
   }
 }

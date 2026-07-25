@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🎧 PurePlay (ListenFree)
+# 🎧 PurePlay
 ### *Next-Generation, Ad-Free Music & Audio Streaming Experience*
 
 [![React](https://img.shields.io/badge/React-18.x-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://reactjs.org/)
@@ -23,7 +23,7 @@
 
 ## 🌟 Overview
 
-**PurePlay** (formerly *ListenFree*) is a sleek, ultra-fast, ad-free web music application built with **React 18**, **TypeScript**, **Vite**, and **Tailwind CSS**. It delivers high-fidelity audio streaming, real-time synchronized lyrics, rich playlist curation, offline caching, interactive music games, and **9 customizable, system-wide player themes**.
+**PurePlay** is a sleek, ultra-fast, ad-free web music application built with **React 18**, **TypeScript**, **Vite**, and **Tailwind CSS**. It delivers high-fidelity audio streaming, real-time synchronized lyrics, rich playlist curation, offline caching, interactive music games, and **9 customizable, system-wide player themes**.
 
 ---
 

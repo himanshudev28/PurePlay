@@ -257,24 +257,36 @@ export default function Settings() {
         </div>
       </Section>
 
-      {(canInstall || isInstalled) && (
-        <Section
-          icon={<Smartphone size={20} />}
-          title="App installation"
-          description="Install ListenFree on your device for native app experience."
-        >
-          {isInstalled ? (
-            <p className="text-xs text-emerald-400 flex items-center gap-1.5"><Check size={14} /> App is installed on this device.</p>
-          ) : (
+      <Section
+        icon={<Smartphone size={20} />}
+        title="App installation & PWA"
+        description="Install PurePlay on your device for a fast, native app experience."
+      >
+        {isInstalled ? (
+          <p className="text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
+            <Check size={16} /> PurePlay is installed on this device.
+          </p>
+        ) : canInstall ? (
+          <button
+            onClick={() => void promptInstall()}
+            className="flex items-center gap-2 rounded-xl bg-accent px-5 py-2.5 text-xs font-bold text-ink-950 shadow-lg hover:scale-105 transition"
+          >
+            <Smartphone size={16} /> Install PurePlay App
+          </button>
+        ) : (
+          <div className="space-y-2">
             <button
               onClick={() => void promptInstall()}
-              className="rounded-xl bg-accent px-5 py-2.5 text-xs font-bold text-ink-950 shadow-lg hover:scale-105 transition"
+              className="flex items-center gap-2 rounded-xl bg-accent px-5 py-2.5 text-xs font-bold text-ink-950 shadow-lg hover:scale-105 transition"
             >
-              Install ListenFree App
+              <Smartphone size={16} /> Install PurePlay App
             </button>
-          )}
-        </Section>
-      )}
+            <p className="text-xs text-ink-400">
+              Tip: You can also install PurePlay directly from your browser menu by selecting <strong className="text-white">"Add to Home Screen"</strong> or <strong className="text-white">"Install App"</strong>.
+            </p>
+          </div>
+        )}
+      </Section>
     </div>
   )
 }

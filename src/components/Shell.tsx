@@ -64,7 +64,7 @@ export function Shell({ children }: { children: ReactNode }) {
           borderRight: '1px solid var(--shell-border, #17171b)',
         }}
       >
-        <Link to="/" className="mb-5 text-2xl" aria-label="ListenFree home">
+        <Link to="/" className="mb-5 text-2xl" aria-label="PurePlay home">
           <span aria-hidden>🎧</span>
         </Link>
         {NAV.map(({ to, icon: Icon, label, end }) => (
@@ -112,7 +112,7 @@ export function Shell({ children }: { children: ReactNode }) {
           style={{ color: 'var(--shell-nav-active, white)' }}
         >
           <span className="lg:hidden" aria-hidden>🎧</span>
-          <span className="font-display">ListenFree</span>
+          <span className="font-handwritten text-2xl font-bold tracking-wide">PurePlay</span>
         </Link>
 
         <button
@@ -152,10 +152,11 @@ export function Shell({ children }: { children: ReactNode }) {
           >
             <div className="mb-6 flex items-center justify-between">
               <span
-                className="font-display font-semibold"
+                className="flex items-center gap-1.5"
                 style={{ color: 'var(--shell-nav-active, white)' }}
               >
-                <span aria-hidden>🎧 </span>ListenFree
+                <span aria-hidden>🎧 </span>
+                <span className="font-handwritten text-2xl font-bold tracking-wide">PurePlay</span>
               </span>
               <button
                 onClick={() => setMobileNav(false)}

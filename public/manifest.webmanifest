@@ -1,6 +1,6 @@
 {
-  "name": "ListenFree",
-  "short_name": "ListenFree",
+  "name": "PurePlay",
+  "short_name": "PurePlay",
   "description": "Free music streaming with offline downloads, synced listening rooms and smart playlists.",
   "start_url": "/",
   "scope": "/",

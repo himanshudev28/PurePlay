@@ -12,7 +12,7 @@ interface DownloadRecord {
   savedAt: number
 }
 
-interface ListenFreeDB extends DBSchema {
+interface PurePlayDB extends DBSchema {
   /** metadata for everything the user has downloaded */
   downloads: {
     key: string
@@ -26,11 +26,11 @@ interface ListenFreeDB extends DBSchema {
   }
 }
 
-let dbPromise: Promise<IDBPDatabase<ListenFreeDB>> | null = null
+let dbPromise: Promise<IDBPDatabase<PurePlayDB>> | null = null
 
 function db() {
   if (!dbPromise) {
-    dbPromise = openDB<ListenFreeDB>('listenfree', 2, {
+    dbPromise = openDB<PurePlayDB>('pureplay', 2, {
       upgrade(d, oldVersion) {
         // v1 keyed `downloads` on 'track.id' while every read used keyOf() —
         // so records were written under one key and looked up under another.

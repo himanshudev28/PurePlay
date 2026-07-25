@@ -118,16 +118,19 @@ export default function Home() {
       <div aria-hidden className="pointer-events-none absolute -top-20 -left-20 h-[420px] w-[420px] rounded-full bg-accent/20 blur-[140px]" />
       <div aria-hidden className="pointer-events-none absolute top-1/3 -right-20 h-[420px] w-[420px] rounded-full bg-accent/15 blur-[150px]" />
 
-      {/* Greeting */}
-      <header className="space-y-1">
-        <h1 className="font-display text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
-          {hello} <span aria-hidden>👋</span>
-        </h1>
-        <p className="text-sm text-ink-300 sm:text-base">
-          {tasteArtist
-            ? `More ${tasteArtist} and the music you love, cued up.`
-            : 'Let’s find something great to play.'}
-        </p>
+      {/* Greeting & PurePlay Brand Banner */}
+      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-4">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="font-handwritten text-4xl sm:text-5xl font-bold tracking-wide text-white drop-shadow-[0_2px_10px_rgba(255,107,74,0.4)]">PurePlay</span>
+            <span className="rounded-full bg-accent/15 px-2.5 py-0.5 text-[10px] font-bold text-accent uppercase tracking-wider">Ad-Free</span>
+          </div>
+          <p className="text-sm text-ink-300 sm:text-base">
+            {hello} 👋 — {tasteArtist
+              ? `More ${tasteArtist} and the music you love, cued up.`
+              : 'Unlimited free music streaming without ads.'}
+          </p>
+        </div>
       </header>
 
       {error && (

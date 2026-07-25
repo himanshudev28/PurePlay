@@ -233,7 +233,7 @@ export default function Heardle() {
     const squares = guesses.map((g) => (g.correct ? '🟩' : g.skipped ? '⬜' : '🟥')).join('')
     const tail = status === 'lost' ? '🟥'.repeat(Math.max(0, STAGES.length - guesses.length)) : ''
     void navigator.clipboard.writeText(
-      `ListenFree Heardle — ${status === 'won' ? `${guesses.length}/${STAGES.length}` : 'X/6'}\n${squares}${tail}`,
+      `PurePlay Heardle — ${status === 'won' ? `${guesses.length}/${STAGES.length}` : 'X/6'}\n${squares}${tail}`,
     )
     setCopied(true)
     setTimeout(() => setCopied(false), 1800)
