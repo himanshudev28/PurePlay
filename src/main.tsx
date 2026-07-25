@@ -2,10 +2,13 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
-import { registerServiceWorker } from '@/lib/pwa'
+import { registerServiceWorker, initInstallCapture } from '@/lib/pwa'
 import { initTheme } from '@/lib/theme'
 
 initTheme()
+// Capture beforeinstallprompt at startup — it fires early, before Settings
+// (which owns the Install button) ever mounts.
+initInstallCapture()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

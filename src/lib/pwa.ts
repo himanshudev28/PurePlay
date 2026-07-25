@@ -44,3 +44,43 @@ export function isStandalone(): boolean {
     (navigator as unknown as { standalone?: boolean }).standalone === true
   )
 }
+
+/* ── Install prompt capture ────────────────────────────────────────────────
+   `beforeinstallprompt` fires ONCE, early, on initial load. useInstallPrompt
+   only mounts on the Settings page, so by the time the user opens Settings the
+   event is long gone and the Install button is dead. Capture it globally at
+   startup instead and hold it, so the button works whenever Settings opens. */
+export interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
+}
+
+let deferredPrompt: BeforeInstallPromptEvent | null = null
+const listeners = new Set<() => void>()
+const notify = () => listeners.forEach((l) => l())
+
+/** Call once at app startup (before React renders) so no event is missed. */
+export function initInstallCapture() {
+  if (typeof window === 'undefined') return
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault()
+    deferredPrompt = e as BeforeInstallPromptEvent
+    notify()
+  })
+  window.addEventListener('appinstalled', () => {
+    deferredPrompt = null
+    notify()
+  })
+}
+
+export const getInstallPrompt = () => deferredPrompt
+export const clearInstallPrompt = () => {
+  deferredPrompt = null
+  notify()
+}
+export function onInstallPromptChange(cb: () => void) {
+  listeners.add(cb)
+  return () => {
+    listeners.delete(cb)
+  }
+}
