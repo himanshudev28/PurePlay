@@ -770,6 +770,120 @@ export function FullPlayer() {
   }
 
   // ════════════════════════════════════════════════════════════════════════
+  // THEME: MIDNIGHT EMBER / EMERALD GOLD — "Gradient Hero" (centred, framed art)
+  // ════════════════════════════════════════════════════════════════════════
+  const heroCfg = {
+    'midnight-ember': {
+      bg: 'linear-gradient(160deg, #0f0f1e 0%, #16213e 55%, #1a1a2e 100%)',
+      label: 'Midnight Ember',
+      glow: 'bg-[#e94560]/30',
+      ring: 'ring-[#e94560]/45',
+      kicker: 'text-rose-200',
+      chip: 'border-[#e94560]/40 bg-[#e94560]/15 text-rose-100 hover:bg-[#e94560]/25',
+      panel: 'border-[#e94560]/20 bg-[#1a1a2e]/70',
+    },
+    'emerald-gold': {
+      bg: 'linear-gradient(160deg, #071a12 0%, #0f2d22 55%, #14432f 100%)',
+      label: 'Emerald Gold',
+      glow: 'bg-[#f5c542]/25',
+      ring: 'ring-[#f5c542]/45',
+      kicker: 'text-amber-200',
+      chip: 'border-[#f5c542]/40 bg-[#f5c542]/15 text-amber-100 hover:bg-[#f5c542]/25',
+      panel: 'border-[#f5c542]/20 bg-[#0f2d22]/70',
+    },
+    vibrant: {
+      bg: 'linear-gradient(160deg, #1a0433 0%, #3b0764 50%, #6d28d9 100%)',
+      label: 'Vibrant',
+      glow: 'bg-fuchsia-500/30',
+      ring: 'ring-fuchsia-400/50',
+      kicker: 'text-fuchsia-200',
+      chip: 'border-fuchsia-400/40 bg-fuchsia-500/15 text-fuchsia-100 hover:bg-fuchsia-500/25',
+      panel: 'border-fuchsia-500/20 bg-[#2b0b52]/70',
+    },
+  } as const
+
+  if (playerTheme in heroCfg) {
+    const cfg = heroCfg[playerTheme as keyof typeof heroCfg]
+    return (
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Now playing: ${current.title}`}
+        tabIndex={-1}
+        className="player-surface fixed inset-0 z-50 flex flex-col overflow-hidden text-white outline-none"
+        style={{ background: cfg.bg }}
+      >
+        {/* soft artwork bloom */}
+        {current.artwork && (
+          <div aria-hidden className="pointer-events-none absolute inset-0 opacity-30">
+            <img src={current.artwork} alt="" className="h-full w-full scale-125 object-cover blur-3xl" />
+          </div>
+        )}
+
+        <header
+          className="relative z-20 flex items-center justify-between px-5 py-4"
+          style={{ paddingTop: 'max(env(safe-area-inset-top,0px), 1rem)' }}
+        >
+          <button onClick={closeFullPlayer} className="rounded-full bg-white/10 p-2.5 text-white/90 transition hover:bg-white/20">
+            <ChevronDown size={22} />
+          </button>
+          <span className={clsx('text-xs font-bold tracking-[0.2em] uppercase', cfg.kicker)}>{cfg.label}</span>
+          <button
+            onClick={() => togglePanel('lyrics')}
+            aria-pressed={activeTab === 'lyrics' && showRightPanel}
+            className="rounded-full bg-white/10 p-2.5 transition hover:bg-white/20"
+          >
+            <FileText size={18} />
+          </button>
+        </header>
+
+        <div className="relative z-10 flex flex-1 flex-col items-center justify-around gap-5 overflow-y-auto px-6 pb-6 pt-2">
+          {/* Framed square artwork with a coloured bloom */}
+          <div className={clsx('relative aspect-square transition-all duration-300', showRightPanel ? 'w-52 sm:w-60' : 'w-64 sm:w-80')}>
+            <div className={clsx('absolute -inset-6 rounded-[2rem] blur-3xl', cfg.glow)} />
+            <div className={clsx('relative h-full w-full overflow-hidden rounded-3xl shadow-2xl ring-4 glow-accent', cfg.ring)}>
+              <Artwork src={current.artwork} alt="" className="h-full w-full" rounded="rounded-3xl" />
+            </div>
+          </div>
+
+          <div className="space-y-1 text-center">
+            <p className={clsx('text-xs font-semibold tracking-widest uppercase', cfg.kicker)}>{current.artist}</p>
+            <h1 className="font-display text-2xl font-extrabold tracking-tight text-white sm:text-3xl [text-wrap:balance] line-clamp-2">
+              {current.title}
+            </h1>
+          </div>
+
+          {ScrubBar({ className: showRightPanel ? '' : 'max-w-md' })}
+          {Transport({})}
+
+          <div className="flex items-center gap-3">
+            {FavButton()}
+            <button
+              onClick={() => void handleShare()}
+              className={clsx('flex items-center gap-1.5 rounded-full border px-4 py-2 text-xs font-semibold transition', cfg.chip)}
+            >
+              {shareState === 'copied' ? <Check size={14} /> : <Share2 size={14} />} {shareState === 'copied' ? 'Copied' : 'Share'}
+            </button>
+          </div>
+
+          {!showRightPanel && (
+            <button
+              onClick={() => setShowRightPanel(true)}
+              className={clsx('flex items-center gap-2 rounded-full border px-5 py-2 text-xs font-semibold backdrop-blur-md transition hover:scale-105 active:scale-95', cfg.chip)}
+            >
+              <Sparkles size={14} /> Show Lyrics & Queue
+            </button>
+          )}
+
+          {showRightPanel && RightPanel({ className: clsx('w-full max-w-md h-64', cfg.panel) })}
+        </div>
+        {MobileFooter({ className: cfg.panel })}
+      </div>
+    )
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
   // THEME: CLASSIC / NEUMORPHIC / VIBRANT / GLASS PRO
   // ════════════════════════════════════════════════════════════════════════
   return (
