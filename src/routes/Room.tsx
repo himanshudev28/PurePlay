@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Users, Copy, Check, Send, LogOut, Crown, Radio, Pencil, Lock, Unlock } from 'lucide-react'
+import { Users, Copy, Check, Send, LogOut, Crown, Radio, Pencil, Lock, Unlock, X } from 'lucide-react'
 import clsx from 'clsx'
 import { usePlayer } from '@/store/player'
 import { useRoom } from '@/store/room'
@@ -13,6 +13,7 @@ export default function Room() {
 
   const roomId = useRoom((s) => s.roomId)
   const savedName = useRoom((s) => s.name)
+  const notice = useRoom((s) => s.notice)
   const join = useRoom((s) => s.join)
   const [name, setName] = useState(savedName)
 
@@ -21,24 +22,39 @@ export default function Room() {
     if (roomId && urlId !== roomId) setParams({ id: roomId })
   }, [roomId, urlId, setParams])
 
+  // After a kick, drop the invite id from the URL so the auto-rejoin below
+  // doesn't immediately pull the removed user straight back in.
+  useEffect(() => {
+    if (notice && urlId) setParams({})
+  }, [notice, urlId, setParams])
+
   // Returning to a shared link (or reload) while a name is known rejoins
   // automatically instead of dropping the user back on the lobby.
   useEffect(() => {
-    if (!roomId && urlId && savedName.trim()) join(urlId.toUpperCase(), savedName.trim())
-  }, [roomId, urlId, savedName, join])
+    if (!roomId && urlId && savedName.trim() && !notice) join(urlId.toUpperCase(), savedName.trim())
+  }, [roomId, urlId, savedName, join, notice])
 
   if (!roomId) {
-    return <RoomLobby urlId={urlId} name={name} setName={setName} onJoin={(id) => join(id, name.trim() || 'Guest')} />
+    return (
+      <RoomLobby
+        urlId={urlId}
+        name={name}
+        setName={setName}
+        notice={notice}
+        onJoin={(id) => join(id, name.trim() || 'Guest')}
+      />
+    )
   }
   return <RoomSession />
 }
 
 function RoomLobby({
-  urlId, name, setName, onJoin,
+  urlId, name, setName, notice, onJoin,
 }: {
   urlId: string
   name: string
   setName: (v: string) => void
+  notice: string | null
   onJoin: (id: string) => void
 }) {
   const [code, setCode] = useState(urlId)
@@ -62,6 +78,12 @@ function RoomLobby({
           Play the same song, at the same second, with anyone. The host controls playback.
         </p>
       </header>
+
+      {notice && (
+        <p className="rounded-xl border border-accent-dim bg-accent-dim/30 px-4 py-2.5 text-center text-sm text-accent-soft">
+          {notice}
+        </p>
+      )}
 
       <div className="space-y-4 rounded-2xl border border-ink-800 bg-ink-900/60 p-5">
         <div>
@@ -123,6 +145,7 @@ function RoomSession() {
   const sendChat = useRoom((s) => s.sendChat)
   const setControlMode = useRoom((s) => s.setControlMode)
   const setName = useRoom((s) => s.setName)
+  const kick = useRoom((s) => s.kick)
 
   const current = usePlayer((s) => s.current)
 
@@ -285,10 +308,28 @@ function RoomSession() {
               </button>
             )}
             {members.map((m) => (
-              <span key={m.id} className="rounded-full bg-ink-800 px-3 py-1.5 text-xs text-ink-300">
+              <span
+                key={m.id}
+                className="group flex items-center gap-1.5 rounded-full bg-ink-800 py-1.5 pr-1.5 pl-3 text-xs text-ink-300"
+              >
                 {m.name}
+                {isHost && (
+                  <button
+                    onClick={() => kick(m.id)}
+                    title={`Remove ${m.name}`}
+                    aria-label={`Remove ${m.name} from the room`}
+                    className="rounded-full p-0.5 text-ink-400 transition hover:bg-ink-700 hover:text-white"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
               </span>
             ))}
+            {members.length === 0 && (
+              <span className="rounded-full border border-dashed border-ink-700 px-3 py-1.5 text-xs text-ink-400">
+                Share the code to invite others
+              </span>
+            )}
           </div>
         </section>
       </div>

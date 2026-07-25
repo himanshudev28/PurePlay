@@ -5,7 +5,7 @@
  * fight Vite's HMR.
  */
 export function registerServiceWorker(onUpdateReady?: () => void) {
-  if (!('serviceWorker' in navigator) || !import.meta.env.PROD) return
+  if (!('serviceWorker' in navigator)) return
 
   window.addEventListener('load', () => {
     void navigator.serviceWorker
