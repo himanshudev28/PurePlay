@@ -7,23 +7,19 @@ import { EmptyState, Button } from '@/components/ui'
 export default function Favorites() {
   const favorites = useLibrary((s) => s.favorites)
   const playQueue = usePlayer((s) => s.playQueue)
-  const toggleShuffle = usePlayer((s) => s.toggleShuffle)
-  const shuffle = usePlayer((s) => s.shuffle)
-
-  const shuffleAll = () => {
-    if (!shuffle) toggleShuffle()
-    void playQueue(favorites, Math.floor(Math.random() * favorites.length))
-  }
+  const playShuffled = usePlayer((s) => s.playShuffled)
 
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight text-white">
-            <Heart size={26} className="text-accent" fill="currentColor" />
+          <h1 className="font-display flex items-center gap-2 text-3xl font-extrabold tracking-tight text-white">
+            <Heart size={26} className="text-accent" fill="currentColor" aria-hidden />
             Favorites
           </h1>
-          <p className="mt-1 text-sm text-ink-400">{favorites.length} songs</p>
+          <p className="mt-1 text-sm text-ink-400">
+            {favorites.length} song{favorites.length === 1 ? '' : 's'}
+          </p>
         </div>
         {favorites.length > 0 && (
           <div className="flex gap-2">
@@ -31,7 +27,7 @@ export default function Favorites() {
               <Play size={15} fill="currentColor" />
               Play
             </Button>
-            <Button variant="outline" onClick={shuffleAll}>
+            <Button variant="outline" onClick={() => void playShuffled(favorites)}>
               <Shuffle size={15} />
               Shuffle
             </Button>

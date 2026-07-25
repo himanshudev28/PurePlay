@@ -2,17 +2,147 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!-- `maximum-scale=1, user-scalable=no` blocked pinch-zoom entirely, which
+         fails WCAG 2.1 SC 1.4.4 (Resize Text). viewport-fit=cover keeps the
+         safe-area insets the app already uses working on notched devices. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
+    <title>ListenFree — Free Music Streaming, Ad-Free</title>
+    <meta name="description" content="ListenFree is a fast, privacy-respecting music streaming platform offering ad-free playback, social listening rooms, offline downloads and smart playlists." />
+    <meta name="keywords" content="free music streaming, listen free, ads free music, offline music app, collaborative listening rooms, smart playlist" />
+    <meta name="author" content="ListenFree" />
+
+    <!-- Open Graph -->
+    <meta property="og:title" content="ListenFree — Free Music Streaming, Ad-Free" />
+    <meta property="og:description" content="Enjoy unlimited free music streaming. No ads, just music, favorites, playlists, unlimited skips." />
+    <meta property="og:type" content="music.song" />
+    <meta property="og:url" content="https://listenfree.in/" />
+
+    <!-- Mobile / PWA -->
+    <meta name="theme-color" content="#070708" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="apple-touch-icon" href="/icon.svg" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="theme-color" content="#070708" />
-    <link rel="apple-touch-icon" href="/icon.svg" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ListenFree — free music, offline, rooms</title>
-    <meta name="description" content="Fast, ad-free music streaming with offline downloads, synced listening rooms and smart playlists." />
+
+    <!-- Google Fonts: Inter + Montserrat -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Montserrat:wght@400..900&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Splash screen (hidden once React mounts) -->
+    <style>
+      #splash {
+        position: fixed;
+        inset: 0;
+        /* top of the app's stacking scale (see src/index.css), not an
+           arbitrary 9999 */
+        z-index: 100;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: #070708;
+        transition: opacity 0.4s ease, visibility 0.4s ease;
+      }
+      #splash.hidden {
+        opacity: 0;
+        visibility: hidden;
+      }
+      #splash .logo {
+        font-size: 3rem;
+        animation: pulse-logo 1.5s ease-in-out infinite;
+      }
+      #splash .name {
+        margin-top: 16px;
+        font-family: 'Inter', system-ui, sans-serif;
+        font-size: 1.25rem;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        color: #c6c6d2;
+      }
+      #splash .loader {
+        margin-top: 28px;
+        width: 40px;
+        height: 40px;
+        border: 3px solid #232329;
+        border-top-color: #ff6b4a;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+      @keyframes pulse-logo {
+        0%, 100% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.08); opacity: 0.8; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #splash .logo { animation: none; }
+        #splash .loader { animation-duration: 2.4s; }
+      }
+    </style>
   </head>
   <body>
+    <!-- Splash -->
+    <div id="splash" role="status" aria-label="Loading ListenFree">
+      <span class="logo" aria-hidden="true">🎧</span>
+      <span class="name">ListenFree</span>
+      <div class="loader" aria-hidden="true"></div>
+    </div>
+
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+
+    <!-- Hide splash once React renders -->
+    <script>
+      (function () {
+        var splash = document.getElementById('splash');
+        var root = document.getElementById('root');
+        if (!splash || !root) return;
+
+        function dismiss() {
+          splash.classList.add('hidden');
+          setTimeout(function () {
+            splash.remove();
+          }, 500);
+        }
+
+        var observer = new MutationObserver(function () {
+          if (root.childNodes.length > 0) {
+            observer.disconnect();
+            clearTimeout(failsafe);
+            dismiss();
+          }
+        });
+        observer.observe(root, { childList: true });
+
+        // If the bundle fails to load or throws while mounting, the observer
+        // never fires and the splash covers the page forever. Give up after
+        // 10s and let whatever did render (or the browser's own error) show.
+        var failsafe = setTimeout(function () {
+          observer.disconnect();
+          dismiss();
+        }, 10000);
+      })();
+    </script>
+
+    <!-- Structured Data -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "ListenFree",
+        "url": "https://listenfree.in/",
+        "applicationCategory": "MusicApplication",
+        "operatingSystem": "Web",
+        "description": "Fast, ad-free music streaming with offline downloads, synced listening rooms and smart playlists."
+      }
+    </script>
   </body>
 </html>

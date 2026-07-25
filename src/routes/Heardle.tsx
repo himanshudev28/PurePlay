@@ -297,7 +297,7 @@ export default function Heardle() {
             }}
           />
         </div>
-        <div className="flex items-center justify-between text-[11px] tabular-nums text-ink-600">
+        <div className="flex items-center justify-between text-[11px] tabular-nums text-ink-400">
           {STAGES.map((s) => (
             <span key={s} className={clsx(s <= limit && 'text-ink-300')}>
               {s}s
@@ -330,7 +330,7 @@ export default function Heardle() {
               key={i}
               className={clsx(
                 'flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-sm',
-                !g && 'border-ink-800 bg-ink-900/40 text-ink-600',
+                !g && 'border-ink-800 bg-ink-900/40 text-ink-400',
                 g?.correct && 'border-accent bg-accent-dim/40 text-white',
                 g && !g.correct && 'border-ink-700 bg-ink-800/60 text-ink-300',
               )}
@@ -338,7 +338,7 @@ export default function Heardle() {
               {g?.correct ? (
                 <Check size={15} className="shrink-0 text-accent" />
               ) : g ? (
-                <X size={15} className="shrink-0 text-ink-500" />
+                <X size={15} className="shrink-0 text-ink-400" />
               ) : (
                 <span className="w-[15px] shrink-0 text-center text-xs">{i + 1}</span>
               )}

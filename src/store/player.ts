@@ -2,6 +2,26 @@ import { create } from 'zustand'
 import type { Track } from '@/types'
 import { keyOf } from '@/lib/db'
 import { engineFor, isFromCache, type PlaybackEngine } from '@/playback'
+import { getMatchingRecommendations } from '@/services/recommendations'
+import { getVolume, setVolume as persistVolume } from '@/lib/prefs'
+
+/**
+ * Radio tail sizing.
+ *
+ * The queue is topped up from the *playhead*, not from the total length. An
+ * earlier version capped the whole queue at 60 items, which meant that after
+ * 60 tracks the top-up stopped firing permanently and playback simply ran off
+ * the end — a dead end that was worse than the unbounded growth it replaced.
+ *
+ * Memory is bounded by trimming already-played tracks off the front instead,
+ * so a session can run indefinitely with a roughly constant-size queue.
+ */
+/** Top up once fewer than this many tracks remain ahead of the current one. */
+const LOOKAHEAD_MIN = 10
+/** When topping up, refill to roughly this many ahead. */
+const LOOKAHEAD_TARGET = 25
+/** How many played tracks stay behind the playhead before they're trimmed. */
+const MAX_BEHIND = 50
 
 export type RepeatMode = 'off' | 'all' | 'one'
 
@@ -25,6 +45,8 @@ interface PlayerState {
 
   playTrack: (track: Track, queue?: Track[]) => Promise<void>
   playQueue: (tracks: Track[], startAt?: number) => Promise<void>
+  /** start a list at a random track *and* turn shuffle on for what follows */
+  playShuffled: (tracks: Track[]) => Promise<void>
   toggle: () => void
   next: (auto?: boolean) => Promise<void>
   prev: () => Promise<void>
@@ -36,12 +58,25 @@ interface PlayerState {
   enqueue: (track: Track) => void
   removeFromQueue: (index: number) => void
   clearQueue: () => void
+  /** true while the radio tail is being fetched, so lists can show progress */
+  queueExtending: boolean
+  /** true once the current seed chain stops yielding anything new */
+  queueExhausted: boolean
+  /** pull more tracks in now, regardless of how many are already queued */
+  extendQueue: () => Promise<void>
   dismissError: () => void
   /** true when the active engine renders video that must stay visible */
   videoActive: boolean
   /** whether the video frame is showing large or as a thumbnail */
   videoExpanded: boolean
   toggleVideoExpanded: () => void
+
+  fullPlayerOpen: boolean
+  playerViewMode: 'bar' | 'full' | 'card'
+  openFullPlayer: () => void
+  closeFullPlayer: () => void
+  toggleFullPlayer: () => void
+  setPlayerViewMode: (mode: 'bar' | 'full' | 'card') => void
 
   _sync: (patch: Partial<PlayerState>) => void
 }
@@ -63,6 +98,23 @@ let loadSeq = 0
  */
 const history: string[] = []
 
+/**
+ * The volume slider only renders at md and up (see PlayerBar), so on a phone the
+ * app-level gain would sit stuck at the stored default with no way to raise it.
+ * On those viewports we start at full scale and let the device's own hardware
+ * buttons be the volume control.
+ *
+ * Note: this is the app's *internal* gain multiplier, not the phone's OS volume
+ * — the two are independent, and 100% here just means "don't attenuate."
+ */
+function initialVolume(): number {
+  const hasSlider =
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(min-width: 768px)').matches
+  return hasSlider ? getVolume() : 1
+}
+
 export const usePlayer = create<PlayerState>((set, get) => ({
   queue: [],
   index: -1,
@@ -70,7 +122,7 @@ export const usePlayer = create<PlayerState>((set, get) => ({
   playing: false,
   position: 0,
   duration: 0,
-  volume: Number(localStorage.getItem('lf:volume') ?? 0.8),
+  volume: initialVolume(),
   muted: false,
   shuffle: false,
   repeat: 'off',
@@ -79,16 +131,38 @@ export const usePlayer = create<PlayerState>((set, get) => ({
   fromCache: false,
   videoActive: false,
   videoExpanded: false,
+  fullPlayerOpen: false,
+  playerViewMode: 'bar',
 
   toggleVideoExpanded: () => set((s) => ({ videoExpanded: !s.videoExpanded })),
+  openFullPlayer: () => set({ fullPlayerOpen: true }),
+  closeFullPlayer: () => set({ fullPlayerOpen: false }),
+  toggleFullPlayer: () => set((s) => ({ fullPlayerOpen: !s.fullPlayerOpen })),
+  setPlayerViewMode: (mode) =>
+    set({
+      playerViewMode: mode,
+      fullPlayerOpen: mode === 'full',
+    }),
 
   _sync: (patch) => set(patch),
 
   async playQueue(tracks, startAt = 0) {
     if (!tracks.length) return
-    set({ queue: tracks })
+    set({ queue: tracks, queueExhausted: false })
     history.length = 0
     await load(startAt, set, get)
+  },
+
+  /*
+    Every "Shuffle" button used to be `playQueue(list, randomIndex)` — which
+    picked a random *first* track and then played the rest in order, so the
+    shuffle lasted exactly one song. Turning the mode on is the point.
+  */
+  async playShuffled(tracks) {
+    if (!tracks.length) return
+    set({ shuffle: true, queue: tracks, queueExhausted: false })
+    history.length = 0
+    await load(Math.floor(Math.random() * tracks.length), set, get)
   },
 
   async playTrack(track, queue) {
@@ -97,12 +171,12 @@ export const usePlayer = create<PlayerState>((set, get) => ({
     // If the supplied queue doesn't contain the track (a filtered or stale
     // list), play the requested track rather than silently playing q[0].
     if (found === -1) {
-      set({ queue: [track] })
+      set({ queue: [track], queueExhausted: false })
       history.length = 0
       await load(0, set, get)
       return
     }
-    set({ queue: q })
+    set({ queue: q, queueExhausted: false })
     history.length = 0
     await load(found, set, get)
   },
@@ -197,6 +271,8 @@ export const usePlayer = create<PlayerState>((set, get) => ({
     // store the clamped value, not the request — otherwise the scrubber can
     // render past the end until the next timeupdate corrects it
     set({ position: clamped })
+    // push the jump to the lock screen now rather than waiting for a timeupdate
+    setPositionState(clamped, get().duration, true)
   },
 
   setVolume(v) {
@@ -204,7 +280,7 @@ export const usePlayer = create<PlayerState>((set, get) => ({
     // moving the slider must also lift a previous mute, or the UI shows
     // sound at 50% while the engine stays silent
     activeEngine?.setVolume(vol)
-    localStorage.setItem('lf:volume', String(vol))
+    persistVolume(vol)
     set({ volume: vol, muted: vol === 0 })
   },
 
@@ -215,7 +291,7 @@ export const usePlayer = create<PlayerState>((set, get) => ({
     // unmuting from a zero volume would stay silent — restore something audible
     if (!muted && volume === 0) {
       activeEngine?.setVolume(0.5)
-      localStorage.setItem('lf:volume', '0.5')
+      persistVolume(0.5)
     }
     set({ muted, ...(!muted && volume === 0 ? { volume: 0.5 } : {}) })
   },
@@ -225,7 +301,15 @@ export const usePlayer = create<PlayerState>((set, get) => ({
   cycleRepeat: () =>
     set((s) => ({ repeat: s.repeat === 'off' ? 'all' : s.repeat === 'all' ? 'one' : 'off' })),
 
-  enqueue: (track) => set((s) => ({ queue: [...s.queue, track] })),
+  queueExtending: false,
+  queueExhausted: false,
+
+  extendQueue: () => topUpQueue(set, get, true),
+
+  enqueue: (track) =>
+    // an explicit add means the queue is no longer "done" — let the radio
+    // resume from this new tail track
+    set((s) => ({ queue: [...s.queue, track], queueExhausted: false })),
 
   removeFromQueue: (i) =>
     set((s) => {
@@ -245,6 +329,7 @@ export const usePlayer = create<PlayerState>((set, get) => ({
 
   clearQueue: () => {
     history.length = 0
+    exhaustedSeeds.clear()
     loadSeq++ // invalidate any in-flight load
     activeEngine?.teardown()
     activeEngine = null
@@ -256,11 +341,50 @@ export const usePlayer = create<PlayerState>((set, get) => ({
       position: 0,
       duration: 0,
       videoActive: false,
+      queueExtending: false,
+      queueExhausted: false,
     })
   },
 
   dismissError: () => set({ error: null }),
 }))
+
+/*
+  The volume slider only renders at md and up (see PlayerBar), so on a phone
+  there's no control to raise the app gain. Pin it to 100% whenever that control
+  is absent and restore the saved level when it returns. A change listener — not
+  just the width at first load — means it stays correct through real device
+  widths, rotation, and responsive/DevTools resizes.
+
+  This is the app's internal gain, independent of the device's hardware volume,
+  and the saved preference is never overwritten with the forced 100%.
+*/
+if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+  const hasSlider = window.matchMedia('(min-width: 768px)')
+  const applyGainForViewport = () => {
+    const target = hasSlider.matches ? getVolume() : 1
+    const st = usePlayer.getState()
+    if (st.volume === target) return
+    activeEngine?.setVolume(st.muted ? 0 : target)
+    usePlayer.setState({ volume: target })
+  }
+  hasSlider.addEventListener('change', applyGainForViewport)
+}
+
+/*
+  Dev only: editing this module hot-swaps it and re-creates the store in its
+  empty state (current: null), but the <audio> element lives in another module
+  that isn't replaced and keeps playing — leaving audio with no visible player.
+  Tear the engine down as the old module is disposed so playback can never
+  outlive the state that drives its UI. Production has no HMR, so a reload stops
+  audio and resets state together and this branch never runs.
+*/
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    activeEngine?.teardown()
+    activeEngine = null
+  })
+}
 
 /**
  * Load queue[at] through whichever engine handles its source.
@@ -307,6 +431,9 @@ async function load(
 
     set({ loading: false, fromCache: isFromCache() })
     updateMediaSession(track, get)
+
+    // Prefetch the radio tail well before the playhead reaches the end.
+    void topUpQueue(set, get)
   } catch (e) {
     if (token !== loadSeq) return
 
@@ -329,6 +456,123 @@ async function load(
   }
 }
 
+/** Seconds skipped by the lock-screen ±buttons when the OS gives no offset. */
+const SEEK_STEP = 10
+
+/**
+ * Throttle so the position state is refreshed at most ~once a second. The OS
+ * extrapolates the playhead from `playbackRate` between updates, so pushing it
+ * every timeupdate (~4×/s) is pure waste; a seek/track change forces a refresh.
+ */
+let lastPositionSync = 0
+
+/**
+ * Feed the OS the real playhead so the lock-screen scrubber shows correct
+ * progress and can be dragged. Guarded because Firefox/older Safari lack
+ * setPositionState, and it throws on inconsistent values mid-seek.
+ */
+function setPositionState(position: number, duration: number, force = false) {
+  const ms = navigator.mediaSession as MediaSession & {
+    setPositionState?: (state: MediaPositionState) => void
+  }
+  if (typeof ms?.setPositionState !== 'function') return
+  if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(position) || position < 0) return
+
+  const now = performance.now()
+  if (!force && now - lastPositionSync < 950) return
+  lastPositionSync = now
+
+  try {
+    ms.setPositionState({ duration, playbackRate: 1, position: Math.min(position, duration) })
+  } catch {
+    // values that briefly disagree during a seek can throw — skip this frame
+  }
+}
+
+/** Called from the playback host on every timeupdate. */
+export function syncMediaPosition(position: number, duration: number) {
+  if (!('mediaSession' in navigator)) return
+  setPositionState(position, duration)
+}
+
+/** Stops two rapid track changes from firing two identical top-up fetches. */
+let topUpInFlight = false
+
+/**
+ * Seeds that produced nothing new. Recommendations are derived from a track's
+ * artist and title, so re-seeding from the *same* track returns the same list
+ * every time — every result gets filtered out as a duplicate and the top-up
+ * silently does nothing while still burning a request per track change.
+ */
+const exhaustedSeeds = new Set<string>()
+
+/**
+ * Extend the queue so there are always tracks waiting past the playhead.
+ *
+ * @param force ignore the lookahead threshold (used by "load more" in the
+ *              queue UI, where the user is explicitly asking for more).
+ */
+export async function topUpQueue(
+  set: (p: Partial<PlayerState>) => void,
+  get: () => PlayerState,
+  force = false,
+): Promise<void> {
+  if (topUpInFlight) return
+
+  const { queue, index } = get()
+  if (!queue.length || index < 0) return
+
+  const ahead = queue.length - index - 1
+  if (!force && ahead >= LOOKAHEAD_MIN) return
+
+  /*
+    Seed from the END of the queue rather than the current track. The tail is
+    what the listener is drifting toward, so each round pulls from a different
+    artist and the radio actually moves instead of circling one seed.
+  */
+  const seed = queue[queue.length - 1] ?? queue[index]
+  const seedKey = keyOf(seed)
+  if (exhaustedSeeds.has(seedKey)) return
+
+  const want = Math.max(LOOKAHEAD_TARGET - ahead, LOOKAHEAD_MIN)
+  topUpInFlight = true
+  set({ queueExtending: true })
+  try {
+    // over-fetch, because most of a seed's results are already queued
+    const recs = await getMatchingRecommendations(seed, want * 2)
+    const existing = new Set(get().queue.map(keyOf))
+    const fresh = recs.filter((r) => !existing.has(keyOf(r))).slice(0, want)
+
+    if (!fresh.length) {
+      // don't ask this seed again; the next tail track becomes the next seed
+      exhaustedSeeds.add(seedKey)
+      // only surface "that's everything" when the tail truly can't move: the
+      // seed IS the last track, so no future seed differs from this one
+      set({ queueExhausted: seedKey === keyOf(get().queue[get().queue.length - 1]) })
+      return
+    }
+
+    set({ ...trimPlayed([...get().queue, ...fresh], get().index), queueExhausted: false })
+  } catch {
+    // a failed top-up is not a playback error — the queue simply doesn't grow
+  } finally {
+    topUpInFlight = false
+    set({ queueExtending: false })
+  }
+}
+
+/**
+ * Drop played tracks that have fallen far behind the playhead, keeping memory
+ * flat across a long session. `index` shifts with the splice; `history` stores
+ * keys rather than indices, and `prev()` already skips keys that are no longer
+ * in the queue, so trimmed tracks just stop being reachable backwards.
+ */
+function trimPlayed(queue: Track[], index: number): Partial<PlayerState> {
+  const excess = index - MAX_BEHIND
+  if (excess <= 0) return { queue, index }
+  return { queue: queue.slice(excess), index: index - excess }
+}
+
 /** OS-level media controls (lock screen, keyboard media keys, AirPods). */
 function updateMediaSession(track: Track, get: () => PlayerState) {
   if (!('mediaSession' in navigator)) return
@@ -337,8 +581,36 @@ function updateMediaSession(track: Track, get: () => PlayerState) {
     artist: track.artist,
     artwork: track.artwork ? [{ src: track.artwork, sizes: '480x480', type: 'image/jpeg' }] : [],
   })
-  navigator.mediaSession.setActionHandler('play', () => get().toggle())
-  navigator.mediaSession.setActionHandler('pause', () => get().toggle())
-  navigator.mediaSession.setActionHandler('nexttrack', () => void get().next())
-  navigator.mediaSession.setActionHandler('previoustrack', () => void get().prev())
+
+  // a new track resets the throttle so the first timeupdate repaints the
+  // scrubber immediately rather than up to a second later
+  lastPositionSync = 0
+
+  // Not every browser implements every action; register each defensively so one
+  // unsupported handler never blocks the rest.
+  const trySet = (action: MediaSessionAction, handler: MediaSessionActionHandler | null) => {
+    try {
+      navigator.mediaSession.setActionHandler(action, handler)
+    } catch {
+      // unsupported action — the rest still works
+    }
+  }
+
+  // `play` and `pause` both mapped to toggle(), so an OS "play" arriving while
+  // the track was already playing would pause it instead.
+  trySet('play', () => {
+    if (!get().playing) get().toggle()
+  })
+  trySet('pause', () => {
+    if (get().playing) get().toggle()
+  })
+  trySet('nexttrack', () => void get().next())
+  trySet('previoustrack', () => void get().prev())
+
+  // seek() already clamps to [0, duration], so no bounds maths needed here
+  trySet('seekbackward', (details) => get().seek(get().position - (details.seekOffset || SEEK_STEP)))
+  trySet('seekforward', (details) => get().seek(get().position + (details.seekOffset || SEEK_STEP)))
+  trySet('seekto', (details) => {
+    if (typeof details.seekTime === 'number') get().seek(details.seekTime)
+  })
 }

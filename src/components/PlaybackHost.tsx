@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { usePlayer } from '@/store/player'
+import { usePlayer, syncMediaPosition } from '@/store/player'
 import { useLibrary } from '@/store/library'
 import { initEngines, engineFor } from '@/playback'
 
@@ -28,7 +28,11 @@ export function PlaybackHost() {
     const callbacks = {
       onPlay: () => sync({ playing: true }),
       onPause: () => sync({ playing: false }),
-      onTime: (position: number, duration: number) => sync({ position, duration }),
+      onTime: (position: number, duration: number) => {
+        sync({ position, duration })
+        // keep the OS lock-screen scrubber in step with playback
+        syncMediaPosition(position, duration)
+      },
       onEnded: () => void next(true),
       onError: (message: string) => sync({ error: message, playing: false, loading: false }),
       onLoading: (loading: boolean) => sync({ loading }),
@@ -45,6 +49,13 @@ export function PlaybackHost() {
   useEffect(() => {
     if (current && playing) pushRecent(current)
   }, [current, playing, pushRecent])
+
+  // keep the OS lock screen / media keys showing the right play-pause state
+  useEffect(() => {
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.playbackState = current ? (playing ? 'playing' : 'paused') : 'none'
+    }
+  }, [current, playing])
 
   // keyboard transport controls
   useEffect(() => {

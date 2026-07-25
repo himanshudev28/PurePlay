@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { HardDriveDownload, Play, WifiOff } from 'lucide-react'
 import type { Track } from '@/types'
 import { listDownloads, storageUsage } from '@/lib/db'
+import { subscribeDownloads } from '@/hooks/useDownloads'
 import { usePlayer } from '@/store/player'
 import { TrackRow } from '@/components/TrackRow'
 import { EmptyState, Button, Skeleton, ErrorNote } from '@/components/ui'
@@ -31,7 +32,8 @@ export default function Downloads() {
 
   useEffect(() => {
     refresh()
-    // re-check whenever a download completes elsewhere in the app
+    // re-check whenever a download completes or is removed anywhere in the app
+    const unsubscribe = subscribeDownloads(refresh)
     const onFocus = () => refresh()
     const goOnline = () => setOnline(true)
     const goOffline = () => setOnline(false)
@@ -39,6 +41,7 @@ export default function Downloads() {
     window.addEventListener('online', goOnline)
     window.addEventListener('offline', goOffline)
     return () => {
+      unsubscribe()
       window.removeEventListener('focus', onFocus)
       window.removeEventListener('online', goOnline)
       window.removeEventListener('offline', goOffline)
@@ -52,12 +55,12 @@ export default function Downloads() {
     <div className="space-y-6">
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight text-white">
-            <HardDriveDownload size={26} className="text-accent" />
+          <h1 className="font-display flex items-center gap-2 text-3xl font-extrabold tracking-tight text-white">
+            <HardDriveDownload size={26} className="text-accent" aria-hidden />
             Downloads
           </h1>
           <p className="mt-1 text-sm text-ink-400">
-            {items.length} songs · {formatBytes(totalSize)}
+            {items.length} song{items.length === 1 ? '' : 's'} · {formatBytes(totalSize)}
             {usage.quota > 0 && ` · ${formatBytes(usage.quota - usage.used)} free`}
           </p>
         </div>
@@ -70,9 +73,12 @@ export default function Downloads() {
       </header>
 
       {!online && (
-        <div className="flex items-center gap-2 rounded-xl border border-accent-dim bg-accent-dim/30 px-4 py-3 text-sm text-accent-soft">
-          <WifiOff size={15} />
-          You're offline — only downloaded songs will play.
+        <div
+          role="status"
+          className="flex items-center gap-2 rounded-xl border border-accent-dim bg-accent-dim/30 px-4 py-3 text-sm text-accent-soft"
+        >
+          <WifiOff size={15} aria-hidden />
+          You’re offline — only downloaded songs will play.
         </div>
       )}
 

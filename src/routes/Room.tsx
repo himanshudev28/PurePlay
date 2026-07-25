@@ -68,7 +68,7 @@ function RoomLobby({
           Start a new room
         </Button>
 
-        <div className="flex items-center gap-3 text-xs text-ink-600">
+        <div className="flex items-center gap-3 text-xs text-ink-400">
           <span className="h-px flex-1 bg-ink-800" />
           or join one
           <span className="h-px flex-1 bg-ink-800" />
@@ -81,15 +81,18 @@ function RoomLobby({
             onKeyDown={(e) => e.key === 'Enter' && code.trim() && join(code)}
             placeholder="ROOM CODE"
             maxLength={6}
-            className="flex-1 rounded-xl border border-ink-700 bg-ink-850 px-4 py-2.5 font-mono tracking-[0.25em] text-white uppercase placeholder:font-sans placeholder:tracking-normal placeholder:text-ink-400 focus:border-accent focus:outline-none"
+            // min-w-0 defeats the flex item's default min-width:auto — the
+            // wide-tracked monospace placeholder set a min-content floor that
+            // pushed the Join button 39px past the viewport on small phones
+            className="min-w-0 flex-1 rounded-xl border border-ink-700 bg-ink-850 px-4 py-2.5 font-mono tracking-[0.25em] text-white uppercase placeholder:font-sans placeholder:tracking-normal placeholder:text-ink-400 focus:border-accent focus:outline-none"
           />
-          <Button variant="solid" onClick={() => join(code)} disabled={!code.trim()}>
+          <Button variant="solid" onClick={() => join(code)} disabled={!code.trim()} className="shrink-0">
             Join
           </Button>
         </div>
       </div>
 
-      <p className="text-center text-xs text-ink-600">
+      <p className="text-center text-xs text-ink-400">
         {import.meta.env.VITE_ROOM_WS
           ? 'Connected to a live sync server.'
           : 'No sync server configured — rooms sync across tabs on this device. Set VITE_ROOM_WS to go multi-user.'}
@@ -298,7 +301,7 @@ function RoomSession({ roomId, name, onLeave }: { roomId: string; name: string; 
             <div className="min-w-0 flex-1">
               <p className="truncate text-lg font-semibold text-white">{player.current.title}</p>
               <p className="truncate text-sm text-ink-400">{player.current.artist}</p>
-              <p className="mt-1.5 text-xs text-ink-600">
+              <p className="mt-1.5 text-xs text-ink-400">
                 {isHost
                   ? 'You control playback for everyone.'
                   : `Following the host${Math.abs(drift) > DRIFT_DEADZONE ? ` · correcting ${drift.toFixed(1)}s` : ' · in sync'}`}
@@ -337,14 +340,14 @@ function RoomSession({ roomId, name, onLeave }: { roomId: string; name: string; 
       <aside className="flex h-[520px] flex-col rounded-2xl border border-ink-800 bg-ink-900/60">
         <h3 className="border-b border-ink-800 px-4 py-3 text-sm font-semibold text-white">Chat</h3>
         <div className="scrollbar-thin flex-1 space-y-3 overflow-y-auto p-4">
-          {chat.length === 0 && <p className="text-xs text-ink-600">Say something to the room.</p>}
+          {chat.length === 0 && <p className="text-xs text-ink-400">Say something to the room.</p>}
           {chat.map((c, i) => (
             <div key={`${c.at}-${i}`} className={clsx(c.id === meId.current && 'text-right')}>
-              <p className="text-[11px] text-ink-600">{c.id === meId.current ? 'You' : c.name}</p>
+              <p className="text-[11px] text-ink-400">{c.id === meId.current ? 'You' : c.name}</p>
               <p
                 className={clsx(
                   'mt-0.5 inline-block max-w-[85%] rounded-2xl px-3 py-1.5 text-sm',
-                  c.id === meId.current ? 'bg-accent text-white' : 'bg-ink-800 text-ink-200',
+                  c.id === meId.current ? 'bg-accent text-ink-950' : 'bg-ink-800 text-ink-200',
                 )}
               >
                 {c.text}
@@ -364,7 +367,7 @@ function RoomSession({ roomId, name, onLeave }: { roomId: string; name: string; 
           <button
             onClick={sendChat}
             disabled={!draft.trim()}
-            className="rounded-full bg-accent p-2.5 text-white transition hover:bg-accent-soft disabled:opacity-40"
+            className="rounded-full bg-accent p-2.5 text-ink-950 transition hover:bg-accent-soft disabled:opacity-40"
           >
             <Send size={15} />
           </button>

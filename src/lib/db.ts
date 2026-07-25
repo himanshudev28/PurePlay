@@ -2,7 +2,7 @@ import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 import type { Track } from '@/types'
 
 /** key downloads by source+id so the same title from two catalogs can coexist */
-export const keyOf = (t: Track) => `${t.source}:${t.id}`
+export const keyOf = (t: Track | null | undefined) => (t ? `${t.source}:${t.id}` : '')
 
 interface DownloadRecord {
   /** always keyOf(track) — the primary key */

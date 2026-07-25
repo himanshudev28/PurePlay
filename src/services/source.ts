@@ -15,7 +15,20 @@ export interface MusicSource {
   readonly downloadable: boolean
 
   trending(limit?: number): Promise<Track[]>
+  /**
+   * Mixed search across songs, artists, and collections — what the Search page
+   * renders. Backends typically return only a handful of each kind here.
+   */
   search(query: string, signal?: AbortSignal): Promise<SearchResults>
+  /**
+   * Songs only, honouring `limit`.
+   *
+   * Distinct from `search()` on purpose: JioSaavn's combined endpoint caps each
+   * section at 3 results, which is fine for a preview row but useless for
+   * building a radio queue. Adapters without a songs-only endpoint can fall
+   * back to `search()`.
+   */
+  searchTracks?(query: string, limit?: number, signal?: AbortSignal): Promise<Track[]>
   track(id: string): Promise<Track | null>
   artist(id: string): Promise<{ artist: Artist; tracks: Track[] } | null>
   collection(id: string): Promise<{ collection: Collection; tracks: Track[] } | null>

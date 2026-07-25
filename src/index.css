@@ -7,28 +7,101 @@
   --color-ink-800: #17171b;
   --color-ink-700: #232329;
   --color-ink-600: #34343d;
-  --color-ink-400: #6c6c7a;
+  /* ink-400 is the workhorse for secondary text (artists, durations, labels).
+     The previous #6c6c7a measured 3.9:1 on ink-950 — below the 4.5:1 WCAG AA
+     floor for body text. #82828f is 5.3:1 on ink-950 and 4.7:1 on ink-800,
+     so it clears AA everywhere it is actually used. */
+  --color-ink-400: #82828f;
   --color-ink-300: #9a9aab;
   --color-ink-200: #c6c6d2;
 
   --color-accent: #ff6b4a;
   --color-accent-soft: #ff8a6d;
   --color-accent-dim: #4a2118;
+  /* channels only, so glows/tints can be composed at any alpha and still
+     follow the user's chosen theme (see lib/theme.ts) */
+  --color-accent-rgb: 255, 107, 74;
 
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-display: 'Montserrat', 'Inter', system-ui, sans-serif;
 
   --radius-card: 14px;
 }
+
+/*
+  Stacking order, one place. Anything that needs to layer picks the nearest
+  role rather than inventing a number.
+
+    10  in-page decoration above a backdrop
+    20  sticky header
+    30  side rail / mobile tab bar
+    40  player surfaces (bar, card, queue)
+    50  overlays (full player, mobile drawer, video frame)
+    60  transient notices (update bar)
+   100  boot splash — above everything until React mounts
+*/
 
 @layer base {
   html {
     color-scheme: dark;
   }
 
+  /* ── Shell theme tokens ───────────────────────────────────────────────
+     Written to :root by PlayerThemeContext whenever the player theme changes.
+     These defaults reproduce the Classic (dark) look so the page is correct
+     even before the React context has run. */
+  :root {
+    --shell-bg: #070708;
+    --shell-sidebar-bg: #0c0c0e;
+    --shell-topbar-bg: rgba(12,12,14,0.75);
+    --shell-border: #17171b;
+    --shell-nav-text: #9a9aab;
+    --shell-nav-hover-bg: rgba(23,23,27,0.60);
+    --shell-nav-active: var(--color-accent);
+    --shell-color-scheme: dark;
+  }
+
   body {
     @apply bg-ink-950 text-ink-200 font-sans antialiased;
+    background: var(--shell-bg, #070708);
+    color: var(--color-ink-200, #c6c6d2);
     margin: 0;
     overscroll-behavior-y: none;
+  }
+
+  /* Light theme overrides so cards, titles, headers on light themes remain high-contrast */
+  :root[data-theme-scheme="light"] .text-white {
+    color: #292524 !important;
+  }
+  :root[data-theme-scheme="light"] .text-ink-400 {
+    color: #78716c !important;
+  }
+  :root[data-theme-scheme="light"] .text-ink-300 {
+    color: #57534e !important;
+  }
+  :root[data-theme-scheme="light"] .text-ink-200 {
+    color: #292524 !important;
+  }
+  :root[data-theme-scheme="light"] .bg-ink-900 {
+    background-color: #ddd8ce !important;
+  }
+  :root[data-theme-scheme="light"] .bg-ink-800 {
+    background-color: #c8c0b4 !important;
+  }
+  :root[data-theme-scheme="light"] .border-ink-800 {
+    border-color: #b8a990 !important;
+  }
+
+
+
+  /* Every interactive element gets the same visible focus ring. Without this
+     only <Button> was reachable-and-visible by keyboard; the ~80 bare icon
+     buttons across the player relied on the UA default over a near-black
+     surface. */
+  :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 4px;
   }
 
   ::selection {
@@ -65,6 +138,146 @@
   .shelf > * {
     scroll-snap-align: start;
   }
+
+  /* --- seek bar / range input styling --- */
+  .seek-bar {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    background: transparent;
+    cursor: pointer;
+    width: 100%;
+  }
+  .seek-bar::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 999px;
+    background: var(--color-ink-700);
+  }
+  .seek-bar::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 14px;
+    width: 14px;
+    border-radius: 50%;
+    background: var(--color-accent);
+    border: 2px solid #fff;
+    margin-top: -5px;
+    box-shadow: 0 0 8px rgb(var(--color-accent-rgb) / 0.5);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  .seek-bar:hover::-webkit-slider-thumb {
+    transform: scale(1.2);
+    box-shadow: 0 0 14px rgb(var(--color-accent-rgb) / 0.7);
+  }
+  .seek-bar::-moz-range-track {
+    height: 4px;
+    border-radius: 999px;
+    background: var(--color-ink-700);
+  }
+  .seek-bar::-moz-range-thumb {
+    height: 14px;
+    width: 14px;
+    border-radius: 50%;
+    background: var(--color-accent);
+    border: 2px solid #fff;
+    box-shadow: 0 0 8px rgb(var(--color-accent-rgb) / 0.5);
+    cursor: pointer;
+  }
+  /* The scrubbers sit at opacity-0 until hover so the bar reads clean. Keyboard
+     users get no hover, so focus has to reveal the control too — otherwise the
+     only way to seek without a mouse is invisible. */
+  .seek-bar:focus-visible {
+    opacity: 1 !important;
+    outline-offset: 4px;
+  }
+
+  /* volume slider */
+  .vol-bar {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--color-ink-700);
+    cursor: pointer;
+  }
+  .vol-bar::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 12px;
+    width: 12px;
+    border-radius: 50%;
+    background: var(--color-accent);
+    border: none;
+    box-shadow: 0 0 6px rgb(var(--color-accent-rgb) / 0.4);
+  }
+  .vol-bar::-moz-range-thumb {
+    height: 12px;
+    width: 12px;
+    border-radius: 50%;
+    background: var(--color-accent);
+    border: none;
+    box-shadow: 0 0 6px rgb(var(--color-accent-rgb) / 0.4);
+  }
+
+  /* Backdrop blur for the surfaces that genuinely float over scrolling
+     content — the player bar, the app header, the queue sheet. Not a
+     decorative treatment for static page sections. */
+  .glass {
+    background: rgb(12 12 14 / 0.75);
+    backdrop-filter: blur(20px) saturate(1.5);
+    -webkit-backdrop-filter: blur(20px) saturate(1.5);
+  }
+
+  /* glow accent */
+  .glow-accent {
+    box-shadow:
+      0 0 20px rgb(var(--color-accent-rgb) / 0.2),
+      0 0 60px rgb(var(--color-accent-rgb) / 0.06);
+  }
+
+  /* shimmer loading animation */
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+  .skeleton-shimmer {
+    background: linear-gradient(
+      90deg,
+      var(--color-ink-800) 25%,
+      var(--color-ink-700) 50%,
+      var(--color-ink-800) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+  }
+
+  /* card hover lift */
+  .card-hover {
+    transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.2s ease;
+  }
+  .card-hover:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 30px rgb(0 0 0 / 0.3);
+  }
+
+  /* Playing indicator for list rows. Replaces the coloured left border that
+     used to mark the active track: a stripe reads as decoration, three bars
+     moving in time read as "this is the one that's playing". */
+  @keyframes eq-bar {
+    0%, 100% { transform: scaleY(0.35); }
+    50%      { transform: scaleY(1); }
+  }
+  .eq-bar {
+    transform-origin: bottom;
+    animation: eq-bar 900ms ease-in-out infinite;
+  }
+  .eq-bar:nth-child(2) { animation-delay: 180ms; }
+  .eq-bar:nth-child(3) { animation-delay: 360ms; }
+
+  /* font display for headings */
+  .font-display {
+    font-family: var(--font-display);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -72,6 +285,24 @@
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* Loading spinners and the playing indicator communicate state, not
+     decoration — collapsing them to a single 0.01ms frame would freeze them
+     mid-rotation and read as a broken UI. Slow them down instead. */
+  .animate-spin {
+    animation-duration: 1.6s !important;
+    animation-iteration-count: infinite !important;
+  }
+  .eq-bar {
+    animation: none !important;
+    transform: scaleY(0.7);
+  }
+  .animate-pulse {
+    animation-duration: 3s !important;
+    animation-iteration-count: infinite !important;
   }
 }

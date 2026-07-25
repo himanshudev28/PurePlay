@@ -1,11 +1,11 @@
-import { Heart, Play, Pause, Download, Check, Loader2, MoreHorizontal, Trash2 } from 'lucide-react'
+import { Heart, Play, Pause, Download, Check, Loader2, ListPlus, Trash2 } from 'lucide-react'
 import clsx from 'clsx'
 import type { Track } from '@/types'
 import { usePlayer } from '@/store/player'
 import { useLibrary } from '@/store/library'
 import { useDownloads } from '@/hooks/useDownloads'
 import { formatDuration } from '@/lib/format'
-import { Artwork } from './ui'
+import { Artwork, NowPlayingBars } from './ui'
 import { keyOf } from '@/lib/db'
 
 export function TrackRow({
@@ -34,22 +34,35 @@ export function TrackRow({
   const isPlaying = isCurrent && playing
   const fav = isFavorite(track)
 
+  const downloadLabel =
+    status === 'done'
+      ? 'Remove download'
+      : status === 'downloading'
+        ? `Downloading… ${Math.round(progress * 100)}%`
+        : status === 'error'
+          ? (downloadError ?? 'Download failed — click to retry')
+          : 'Download for offline'
+
   return (
     <div
+      // The active row used to be flagged with a 3px accent left border. That
+      // reads as decoration and shifted the row's text 1px out of alignment
+      // with every neighbour; the tint + accent title + equalizer carry it.
       className={clsx(
-        'group flex items-center gap-3 rounded-xl px-2 py-2 transition sm:px-3',
+        'group flex items-center gap-3 rounded-xl px-2 py-2 transition-colors duration-200 sm:px-3',
         isCurrent ? 'bg-ink-800/80' : 'hover:bg-ink-800/50',
       )}
     >
       <button
         onClick={() => (isCurrent ? toggle() : void playTrack(track, queue))}
-        className="relative shrink-0"
-        aria-label={isPlaying ? `Pause ${track.title}` : `Play ${track.title}`}
+        className="relative shrink-0 rounded-lg"
+        aria-label={isPlaying ? `Pause ${track.title}` : `Play ${track.title} by ${track.artist}`}
       >
-        <Artwork src={track.artwork} alt={track.title} className="h-11 w-11" rounded="rounded-lg" />
+        <Artwork src={track.artwork} alt="" className="h-11 w-11" rounded="rounded-lg" />
         <span
+          aria-hidden
           className={clsx(
-            'absolute inset-0 flex items-center justify-center rounded-lg bg-black/60 transition',
+            'absolute inset-0 flex items-center justify-center rounded-lg bg-black/60 transition-opacity',
             isPlaying ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
           )}
         >
@@ -59,13 +72,14 @@ export function TrackRow({
 
       {index !== undefined && (
         <span className="hidden w-5 text-right text-xs tabular-nums text-ink-400 sm:block">
-          {index + 1}
+          {isCurrent ? <NowPlayingBars className="ml-auto" /> : index + 1}
         </span>
       )}
 
       <div className="min-w-0 flex-1">
         <p className={clsx('truncate text-sm font-medium', isCurrent ? 'text-accent' : 'text-white')}>
           {track.title}
+          {isCurrent && <span className="sr-only"> (now playing)</span>}
         </p>
         <p className="truncate text-xs text-ink-400">{track.artist}</p>
       </div>
@@ -78,9 +92,11 @@ export function TrackRow({
         <button
           onClick={() => toggleFavorite(track)}
           title={fav ? 'Remove from favorites' : 'Add to favorites'}
+          aria-label={`${fav ? 'Remove' : 'Add'} ${track.title} ${fav ? 'from' : 'to'} favorites`}
+          aria-pressed={fav}
           className={clsx(
             'rounded-full p-2 transition hover:bg-ink-700',
-            fav ? 'text-accent' : 'text-ink-400 opacity-0 group-hover:opacity-100 focus:opacity-100',
+            fav ? 'text-accent' : 'text-ink-400 opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
           )}
         >
           <Heart size={15} fill={fav ? 'currentColor' : 'none'} />
@@ -89,22 +105,16 @@ export function TrackRow({
         {supported && (
           <button
             onClick={() => (status === 'done' ? void remove() : void download())}
-            title={
-              status === 'done'
-                ? 'Remove download'
-                : status === 'downloading'
-                  ? `Downloading… ${Math.round(progress * 100)}%`
-                  : status === 'error'
-                    ? (downloadError ?? 'Download failed — click to retry')
-                    : 'Download for offline'
-            }
+            title={downloadLabel}
+            aria-label={`${downloadLabel}: ${track.title}`}
+            aria-busy={status === 'downloading' || undefined}
             className={clsx(
               'relative rounded-full p-2 transition hover:bg-ink-700',
               status === 'done' && 'text-accent',
               status === 'error' && 'text-accent-soft opacity-100',
               status !== 'done' &&
                 status !== 'error' &&
-                'text-ink-400 opacity-0 group-hover:opacity-100 focus:opacity-100',
+                'text-ink-400 opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
             )}
           >
             {status === 'downloading' ? (
@@ -126,7 +136,8 @@ export function TrackRow({
           <button
             onClick={onRemove}
             title="Remove"
-            className="rounded-full p-2 text-ink-400 opacity-0 transition hover:bg-ink-700 hover:text-white group-hover:opacity-100 focus:opacity-100"
+            aria-label={`Remove ${track.title}`}
+            className="rounded-full p-2 text-ink-400 opacity-0 transition hover:bg-ink-700 hover:text-white group-hover:opacity-100 focus-visible:opacity-100"
           >
             <Trash2 size={15} />
           </button>
@@ -134,9 +145,10 @@ export function TrackRow({
           <button
             onClick={() => usePlayer.getState().enqueue(track)}
             title="Add to queue"
-            className="rounded-full p-2 text-ink-400 opacity-0 transition hover:bg-ink-700 hover:text-white group-hover:opacity-100 focus:opacity-100"
+            aria-label={`Add ${track.title} to queue`}
+            className="rounded-full p-2 text-ink-400 opacity-0 transition hover:bg-ink-700 hover:text-white group-hover:opacity-100 focus-visible:opacity-100"
           >
-            <MoreHorizontal size={15} />
+            <ListPlus size={15} />
           </button>
         )}
       </div>

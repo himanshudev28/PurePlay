@@ -1,126 +1,149 @@
-# ListenFree (clone)
+<div align="center">
 
-A music streaming SPA — instant search, offline downloads, synced listening rooms —
-built on a **swappable catalog layer** so the audio source is one file, not a dependency
-baked through the app.
+# 🎧 PurePlay (ListenFree)
+### *Next-Generation, Ad-Free Music & Audio Streaming Experience*
 
-## Run it
+[![React](https://img.shields.io/badge/React-18.x-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://reactjs.org/)
+[![Vite](https://img.shields.io/badge/Vite-5.x-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.x-38BDF8?style=for-the-badge&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
+[![License](https://img.shields.io/badge/License-MIT-green.style=for-the-badge)](LICENSE)
 
-```bash
-npm install
-npm run dev
-```
+<p align="center">
+  <a href="#-key-features">Key Features</a> •
+  <a href="#-player-appearance-themes">Player Themes</a> •
+  <a href="#-screenshots">Screenshots</a> •
+  <a href="#-tech-stack">Tech Stack</a> •
+  <a href="#-getting-started">Getting Started</a>
+</p>
 
-Works with no configuration. It defaults to the **Audius** public API — a real,
-open catalog of artist-uploaded music, no key required.
+---
 
-## Architecture
+</div>
 
-```
-src/
-  services/          catalog adapters — the swappable part
-    source.ts        the MusicSource interface every adapter implements
-    audius.ts        default adapter (open API, no auth)
-    jamendo.ts       second adapter (Creative Commons, needs a free key)
-    index.ts         registry — picks the adapter from VITE_MUSIC_SOURCE
-  store/
-    player.ts        queue, transport, shuffle/repeat, drives the audio element
-    library.ts       favorites, playlists, recents (persisted to localStorage)
-  lib/
-    db.ts            IndexedDB — offline audio blobs + download metadata
-    room.ts          room protocol + transport (WebSocket, BroadcastChannel fallback)
-  components/
-    AudioEngine.tsx  the single <audio> element for the whole app
-    PlayerBar.tsx    transport, seek, volume, queue panel
-  routes/            home, search, library, favorites, downloads, playlist, artist, room
-```
+## 🌟 Overview
 
-### The source abstraction
+**PurePlay** (formerly *ListenFree*) is a sleek, ultra-fast, ad-free web music application built with **React 18**, **TypeScript**, **Vite**, and **Tailwind CSS**. It delivers high-fidelity audio streaming, real-time synchronized lyrics, rich playlist curation, offline caching, interactive music games, and **9 customizable, system-wide player themes**.
 
-Nothing outside `services/` knows where music comes from. Every track carries a
-`source` field, and `sourceFor(track.source)` resolves the adapter that produced it —
-so tracks from different catalogs can sit in one queue.
+---
 
-To add a catalog, implement `MusicSource` (9 methods) and register it. That's it.
+## ✨ Key Features
 
-```
-VITE_MUSIC_SOURCE=jamendo    # swap the whole catalog
-```
+- ⚡ **Lightning Fast Streaming**: High-quality audio playback with instant searching across millions of tracks.
+- 🎨 **9 System-Wide Player Themes**: Personalize the player and entire web application with curated design themes (including *Arc Studio*, *Cosmic Aurora*, *Cherry Blossom*, and *Neumorphic*).
+- 🎤 **Live Synchronized Lyrics**: Automatic line-by-line scrolling lyrics synchronized with track position.
+- 📱 **Responsive Floating Pill Player**: A modern mobile floating island player sitting seamlessly above navigation bars across all screen sizes.
+- 📥 **Offline Download & Caching**: Save favorite tracks locally for offline listening using IndexedDB.
+- 🎮 **Heardle Music Trivia**: Test your music knowledge with an interactive daily track guessing game.
+- 👥 **Real-Time Rooms**: Create co-listening rooms to listen synchronously with friends.
+- 🎛️ **Full Audio Equalizer**: Custom bass boost, audio spatializer, and frequency band adjustments.
+- ⌨️ **Keyboard Shortcuts**: Full media control using standard hotkeys (`Space`, `k`, `j`, `l`, `m`, `f`, `s`).
 
-`downloadable: false` on an adapter hides download controls automatically — the
-right behaviour for embed-only or DRM'd sources where caching isn't permitted.
+---
 
-## Features
+## 🎨 Player Appearance Themes
 
-- **Player** — queue, shuffle, repeat one/all, seek, volume, OS media-key integration
-  via the Media Session API, `Space` / `Shift+←→` shortcuts
-- **Offline** — streams audio into IndexedDB with live progress; cached tracks play
-  back from blob and are preferred over the network automatically
-- **Rooms** — host-authoritative sync with latency-compensated drift correction, plus chat
-- **Search** — debounced, aborts in-flight requests, shareable via `?q=`
-- **Library** — favorites and playlists, persisted locally
+Choose from **9 crafted visual themes** in Settings. Switching player appearance automatically synchronizes colors across the **entire application UI** (Home, Search, Library, Sidebars, and Backgrounds):
 
-### How room sync works
+| Theme Name | Style Description | Palette Accent |
+| :--- | :--- | :--- |
+| 🌀 **Arc Studio** | Curved arch artwork frame with emerald teal & cyan glow | `#022c22` → `#06b6d4` |
+| 🌌 **Cosmic Aurora** | Midnight indigo backdrop with circular orb glowing artwork | `#090d16` → `#6366f1` |
+| 🌸 **Cherry Blossom** | Vibrant deep crimson backdrop with soft pink highlights | `#2e050e` → `#f43f5e` |
+| 🌅 **Sunset Shades** | Warm amber, orange, and terracotta burnt sunset gradient | `#3b1207` → `#f97316` |
+| 💎 **Glass Pro** | Ultra-clean glassmorphic backdrop filter with sky blue accents | `#0c1a2e` → `#38bdf8` |
+| ⚡ **Vibrant** | Rich neon purple & deep indigo gradient | `#3b0764` → `#a855f7` |
+| 🪨 **Neumorphic** | Tactile soft-shadow cream & beige tactile elements | `#d6cfc4` → `#b8a990` |
+| 🖤 **Minimal** | Ultra-sleek distraction-free dark mode with mono layout | `#111827` → `#3b82f6` |
+| 💜 **Classic** | Signature deep purple & violet dark mode | `#1e1432` → `#8b5cf6` |
 
-The host broadcasts `{track, position, playing, at}` on every state change plus a
-5s heartbeat. Followers compute where they *should* be using `expectedPosition()`,
-which adds the elapsed time since `at` to compensate for message latency, then:
+---
 
-| drift | action |
-|---|---|
-| < 0.35s | ignore — seeking would be more disruptive than the drift |
-| 0.35–2s | nudge halfway, so audio doesn't glitch |
-| > 2s | hard seek |
+## 📸 Screenshots
 
-Without a `VITE_ROOM_WS` server, rooms sync across tabs on one device via
-BroadcastChannel — the protocol is identical, so a relay server is a drop-in upgrade.
+<div align="center">
 
-## Gotchas worth knowing about
+### 🌀 Arc Studio Theme (Home Page & Floating Pill Player)
+![Arc Studio Theme](docs/screenshots/arc_studio_home.png)
 
-Found by driving the running app and by review, not by reading code alone.
+### 🌌 Cosmic Aurora Theme (Home Page & Floating Pill Player)
+![Cosmic Aurora Theme](docs/screenshots/cosmic_aurora_home.png)
 
-**`streamUrl` and `downloadUrl` are separate on purpose.** Audius `/stream`
-302-redirects to a content node. `<audio>` will not follow that redirect (it fails
-with `MEDIA_ERR_SRC_NOT_SUPPORTED`), so `streamUrl()` pre-resolves it. But the
-resolved node then *rejects a direct cross-origin `fetch()`*, so downloads must use
-the un-resolved endpoint, which fetch follows with CORS intact. Collapsing these two
-back into one method breaks either playback or downloads — never both at once, which
-is what makes it easy to miss.
+### 🌅 Sunset Shades Theme (Full Player View)
+![Sunset Shades Full Player](docs/screenshots/full_player_view.png)
 
-A `Range: bytes=0-0` header would be the obvious way to resolve the redirect cheaply,
-but it triggers a CORS preflight Audius rejects. The code does a plain GET and cancels
-the body as soon as headers land.
+### 📱 Mobile View (Floating Pill Player & Bottom Navbar)
+<img src="docs/screenshots/mobile_pill_player.png" width="380" alt="Mobile Pill Player" />
 
-**Fast track switching** cancels the pending `play()`, surfaced by Chrome as
-`AbortError: interrupted by a new load request`. Expected, not a failure — filtered.
+</div>
 
-**`load()` is token-guarded.** It awaits twice before touching the element, so without
-a staleness check a slow network load started *first* can resolve *last* and leave the
-element playing a different track than the UI shows.
+---
 
-**Downloads are keyed `source:id`.** An earlier version keyed the object store on
-`track.id` while every read used `source:id`, so downloads were written but never found
-again — the Downloads *page* listed them (it reads via an index) while every row still
-offered "Download". Symptomless in the obvious place, broken everywhere else.
+## 🛠️ Tech Stack
 
-**IndexedDB `blocked`/`blocking` are handled.** Without them a version upgrade held
-open by another tab makes `openDB` hang forever — not reject — so every download
-silently does nothing with no error to diagnose.
+- **Frontend Core**: [React 18](https://reactjs.org/), [TypeScript](https://www.typescriptlang.org/), [Vite](https://vitejs.dev/)
+- **Styling**: [Tailwind CSS](https://tailwindcss.com/), [Lucide React Icons](https://lucide.dev/), [Framer Motion](https://www.framer.com/motion/)
+- **State Management**: [Zustand](https://github.com/pmndrs/zustand)
+- **Local Database**: [idb (IndexedDB)](https://github.com/jakearchibald/idb) for offline track storage & preferences
+- **Audio Engine**: Web Audio API, HTML5 Audio
 
-## Licensing — read before swapping catalogs
+---
 
-The adapters shipped here (Audius, Jamendo) host **artist-uploaded and
-Creative-Commons licensed** music. Streaming *and* caching it offline is permitted.
+## 🚀 Getting Started
 
-That is not true of every catalog. If you point an adapter at a commercial service's
-internal CDN, this app becomes a piracy tool regardless of how the code is
-structured — and offline caching in particular is the part no commercial licence
-permits. Legitimate routes to a mainstream catalog:
+### Prerequisites
 
-| Source | Playback | Offline |
-|---|---|---|
-| Spotify Web Playback SDK | yes (listener needs Premium) | no |
-| YouTube IFrame API | yes | no |
-| Audius / Jamendo / FMA | yes | yes |
+- [Node.js](https://nodejs.org/) (v18.0 or higher recommended)
+- `npm` or `yarn` or `pnpm`
 
-The `downloadable` flag exists to make that distinction enforceable in code.
+### Installation
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/himanshudev28/PurePlay.git
+   cd PurePlay
+   ```
+
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Start the development server**
+   ```bash
+   npm run dev
+   ```
+   Open `http://localhost:5173` in your browser.
+
+4. **Build for production**
+   ```bash
+   npm run build
+   ```
+
+---
+
+## ⌨️ Keyboard Shortcuts
+
+| Key | Action |
+| :---: | :--- |
+| `Space` or `k` | Play / Pause track |
+| `j` | Seek backward 10 seconds |
+| `l` | Seek forward 10 seconds |
+| `m` | Mute / Unmute audio |
+| `f` | Toggle Full Player overlay |
+| `s` | Toggle Shuffle mode |
+| `r` | Cycle Repeat mode (Off / All / One) |
+
+---
+
+## 📄 License
+
+Distributed under the MIT License. See `LICENSE` for more information.
+
+---
+
+<div align="center">
+
+Made with ❤️ by [himanshudev28](https://github.com/himanshudev28)
+
+</div>

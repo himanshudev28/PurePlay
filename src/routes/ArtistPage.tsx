@@ -5,7 +5,7 @@ import type { Track, Artist } from '@/types'
 import { source } from '@/services'
 import { usePlayer } from '@/store/player'
 import { TrackRow } from '@/components/TrackRow'
-import { Artwork, Button, Skeleton, ErrorNote } from '@/components/ui'
+import { Artwork, Button, Skeleton, ErrorNote, EmptyState } from '@/components/ui'
 import { formatCount } from '@/lib/format'
 
 export default function ArtistPage() {
@@ -15,13 +15,17 @@ export default function ArtistPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const playQueue = usePlayer((s) => s.playQueue)
+  const playShuffled = usePlayer((s) => s.playShuffled)
 
   useEffect(() => {
+    // guard against a slow response for a previous artist landing last
+    let live = true
     setLoading(true)
     setError(null)
     source
       .artist(artistId)
       .then((r) => {
+        if (!live) return
         if (!r) {
           setError('Artist not found')
           return
@@ -29,8 +33,12 @@ export default function ArtistPage() {
         setArtist(r.artist)
         setTracks(r.tracks)
       })
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false))
+      .catch((e: Error) => live && setError(e.message))
+      .finally(() => live && setLoading(false))
+
+    return () => {
+      live = false
+    }
   }, [artistId])
 
   if (loading) {
@@ -49,25 +57,26 @@ export default function ArtistPage() {
   return (
     <div className="space-y-6">
       <header className="flex flex-col items-center gap-5 text-center sm:flex-row sm:items-end sm:text-left">
-        <Artwork src={artist.avatar} alt={artist.name} className="h-40 w-40 shadow-2xl" rounded="rounded-full" />
+        <Artwork src={artist.avatar} alt="" className="h-40 w-40 shadow-2xl" rounded="rounded-full" />
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-medium tracking-[0.2em] text-ink-400 uppercase">Artist</p>
-          <h1 className="mt-1.5 text-3xl font-bold tracking-tight text-white sm:text-5xl">{artist.name}</h1>
+          {/* sm:text-5xl here vs sm:text-4xl on the playlist page was the same
+              heading role rendering at two different sizes */}
+          <h1 className="font-display text-3xl font-extrabold tracking-tight text-white sm:text-4xl [text-wrap:balance]">
+            {artist.name}
+          </h1>
           <p className="mt-2 text-sm text-ink-400">
-            {artist.followers ? `${formatCount(artist.followers)} followers · ` : ''}
-            {tracks.length} tracks
+            Artist
+            {artist.followers ? ` · ${formatCount(artist.followers)} followers` : ''}
+            {` · ${tracks.length} track${tracks.length === 1 ? '' : 's'}`}
           </p>
-          {artist.bio && <p className="mt-2 line-clamp-3 max-w-2xl text-sm text-ink-400">{artist.bio}</p>}
+          {artist.bio && <p className="mt-2 line-clamp-3 max-w-[65ch] text-sm text-ink-400">{artist.bio}</p>}
           {tracks.length > 0 && (
             <div className="mt-5 flex justify-center gap-2 sm:justify-start">
               <Button variant="accent" onClick={() => void playQueue(tracks, 0)}>
                 <Play size={15} fill="currentColor" />
                 Play
               </Button>
-              <Button
-                variant="outline"
-                onClick={() => void playQueue(tracks, Math.floor(Math.random() * tracks.length))}
-              >
+              <Button variant="outline" onClick={() => void playShuffled(tracks)}>
                 <Shuffle size={15} />
                 Shuffle
               </Button>
@@ -76,11 +85,18 @@ export default function ArtistPage() {
         </div>
       </header>
 
-      <div className="space-y-0.5">
-        {tracks.map((t, i) => (
-          <TrackRow key={`${t.source}-${t.id}`} track={t} index={i} queue={tracks} />
-        ))}
-      </div>
+      {tracks.length === 0 ? (
+        <EmptyState
+          title="No tracks listed"
+          hint={`${artist.name} is in the catalog, but the source didn't return any songs for them.`}
+        />
+      ) : (
+        <div className="space-y-0.5">
+          {tracks.map((t, i) => (
+            <TrackRow key={`${t.source}-${t.id}`} track={t} index={i} queue={tracks} />
+          ))}
+        </div>
+      )}
     </div>
   )
 }

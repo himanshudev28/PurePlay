@@ -15,12 +15,12 @@ const notify = () => listeners.forEach((fn) => fn())
 /** Tracks with a download in flight, so a second row for the same track can't start another. */
 const inFlight = new Set<string>()
 
-export function useDownloads(track: Track) {
+export function useDownloads(track: Track | null) {
   const [status, setStatus] = useState<Status>('idle')
   const [progress, setProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
-  const supported = sourceFor(track.source).downloadable
-  const key = keyOf(track)
+  const supported = track ? sourceFor(track.source).downloadable : false
+  const key = track ? keyOf(track) : ''
 
   const resetTimer = useRef<number | null>(null)
   const mounted = useRef(true)
@@ -34,6 +34,7 @@ export function useDownloads(track: Track) {
   }, [])
 
   const refresh = useCallback(() => {
+    if (!track) return
     void isDownloaded(track).then((has) => {
       if (!mounted.current) return
       // never stomp on a download that's actively running
@@ -50,7 +51,9 @@ export function useDownloads(track: Track) {
   }, [refresh])
 
   const download = useCallback(async () => {
-    if (!supported || inFlight.has(key)) return
+    // `track` is nullable (the full player renders before anything is loaded),
+    // so narrow it here rather than asserting further down.
+    if (!track || !supported || inFlight.has(key)) return
 
     // a pending "error -> idle" reset must not fire mid-retry and make the row
     // look fresh while a fetch is still running
@@ -90,6 +93,7 @@ export function useDownloads(track: Track) {
   }, [track, supported, key])
 
   const remove = useCallback(async () => {
+    if (!track) return
     await removeDownload(track)
     if (mounted.current) setStatus('idle')
     notify()
@@ -99,3 +103,15 @@ export function useDownloads(track: Track) {
 }
 
 export { notify as notifyDownloadsChanged }
+
+/**
+ * Subscribe to download add/remove events. The Downloads page previously only
+ * re-read IndexedDB on window focus, so deleting a track from its own list left
+ * the row (and the storage totals) on screen until you tabbed away and back.
+ */
+export function subscribeDownloads(fn: () => void) {
+  listeners.add(fn)
+  return () => {
+    listeners.delete(fn)
+  }
+}

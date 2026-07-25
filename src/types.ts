@@ -30,6 +30,8 @@ export interface Collection {
   artwork?: string
   owner?: string
   trackCount?: number
+  /** album = one release, playlist = a curated set. Drives the card's badge. */
+  kind?: 'album' | 'playlist'
   source: string
 }
 
