@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
-  Palette, Gauge, HardDrive, Smartphone, Check, Loader2, Info, Layers,
+  Palette, Gauge, HardDrive, Smartphone, Check, Loader2, Layers,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { THEMES, applyTheme, getSavedThemeId } from '@/lib/theme'

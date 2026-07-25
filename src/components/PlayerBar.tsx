@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1,
-  Volume2, VolumeX, Heart, ListMusic, HardDriveDownload, X, Maximize2, Minimize2, LayoutGrid,
+  Volume2, VolumeX, Heart, ListMusic, HardDriveDownload, X, Maximize2, LayoutGrid,
   Sparkles, ListPlus,
 } from 'lucide-react'
 import clsx from 'clsx'
@@ -10,11 +10,9 @@ import type { Track, Collection } from '@/types'
 import { usePlayer } from '@/store/player'
 import { useLibrary } from '@/store/library'
 import { getSuggestions } from '@/services/recommendations'
-import { formatDuration } from '@/lib/format'
 import { Artwork, NowPlayingBars, QueueTailLoader } from './ui'
 import { keyOf } from '@/lib/db'
 import { usePlayerTheme } from '@/contexts/PlayerThemeContext'
-import { CastButton } from './CastButton'
 
 export function PlayerBar() {
   const s = usePlayer()

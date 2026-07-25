@@ -119,9 +119,9 @@ export function CastButton({
         // resolves once the user picks a device, rejects when they cancel
         await remote.prompt()
       } catch {
-        // cancelled, or no device was reachable after all
-        if (available === false) flashNoneFound()
-        else setStatus('idle')
+        // cancelled, or no device chosen — we already returned above when we
+        // knew there were none, so just settle back to idle
+        setStatus('idle')
       }
       return
     }

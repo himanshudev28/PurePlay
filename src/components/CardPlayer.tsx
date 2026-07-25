@@ -1,4 +1,4 @@
-import { Play, Pause, SkipBack, SkipForward, Maximize2, X, Heart, Shuffle, Repeat } from 'lucide-react'
+import { Play, Pause, SkipBack, SkipForward, Maximize2, X, Heart, Shuffle } from 'lucide-react'
 import clsx from 'clsx'
 import { usePlayer } from '@/store/player'
 import { useLibrary } from '@/store/library'
