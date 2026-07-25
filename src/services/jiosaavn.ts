@@ -50,8 +50,18 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const CACHE_TTL = 5 * 60 * 1000
 const responseCache = new Map<string, { at: number; body: string; status: number }>()
 
-/** One mirror, with a couple of backoff retries for 429 / transient failures. */
-async function fetchWithRetry(target: string, init?: RequestInit, attempts = 2): Promise<Response> {
+/*
+  Circuit breaker. When every mirror fails (the public instances are frequently
+  rate-limited or down), keep retrying each subsequent request against them and
+  the whole page hangs for tens of seconds before callers give up and fall back
+  to YouTube Music. Instead, once they all fail, mark the catalog "down" for a
+  minute and fast-fail — callers then hit their fallback immediately.
+*/
+const BREAKER_MS = 60 * 1000
+let downUntil = 0
+
+/** One mirror, with one backoff retry for a transient 429 / network blip. */
+async function fetchWithRetry(target: string, init?: RequestInit, attempts = 1): Promise<Response> {
   for (let attempt = 0; ; attempt++) {
     if (init?.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
     try {
@@ -79,6 +89,9 @@ async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
     if (hit && Date.now() - hit.at < CACHE_TTL) return new Response(hit.body, { status: hit.status })
   }
 
+  // Breaker open — don't waste seconds re-failing; let the caller fall back now.
+  if (Date.now() < downUntil) throw new Error('Catalog temporarily unavailable')
+
   await acquire()
   try {
     let lastError: unknown
@@ -87,6 +100,7 @@ async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
       try {
         const res = await fetchWithRetry(target, init)
         if (res.ok) {
+          downUntil = 0 // a success reopens the breaker
           if (cacheable) {
             const body = await res.text()
             responseCache.set(url, { at: Date.now(), body, status: res.status })
@@ -103,6 +117,8 @@ async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
         lastError = e
       }
     }
+    // Every mirror failed — trip the breaker so the next calls fast-fail.
+    downUntil = Date.now() + BREAKER_MS
     throw lastError instanceof Error ? lastError : new Error('All music API mirrors are unavailable')
   } finally {
     release()
