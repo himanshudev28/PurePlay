@@ -14,9 +14,10 @@ const ENV_BASE = (import.meta.env.VITE_JIOSAAVN_API as string | undefined)?.repl
 const API_BASES = ENV_BASE
   ? [ENV_BASE, 'https://saavn.sumit.co/api']
   : import.meta.env.PROD
-    ? // On Vercel: go through our own same-origin edge proxy (no CORS, CDN-cached
-      // so the upstream is barely hit). Public mirrors are a last resort.
-      ['/api/saavn', 'https://saavn.sumit.co/api', 'https://saavn.dev/api']
+    ? // On Vercel: go through same-origin proxy rewrites (see vercel.json). Both
+      // are CDN-cached and CORS-free; the second is a different upstream so a
+      // rate-limited primary fails over cleanly, still same-origin.
+      ['/api/saavn', '/api/saavn2']
     : // Local dev has no proxy, so hit the public mirrors directly.
       ['https://saavn.sumit.co/api', 'https://saavn.dev/api']
 /** URLs are built with this; apiFetch swaps in the other mirrors on failure. */
