@@ -212,6 +212,29 @@ export const jiosaavnSource: MusicSource = {
     return list.map(toTrack)
   },
 
+  /** Curated playlists for a genre/mood term — the backbone of the discovery shelves. */
+  async searchPlaylists(query: string, limit = 10, signal?: AbortSignal): Promise<Collection[]> {
+    const res = await fetch(
+      `${API_BASE}/search/playlists?query=${encodeURIComponent(query.trim())}&limit=${limit}`,
+      { signal },
+    )
+    if (!res.ok) throw new SourceError(`Playlist search failed for "${query}"`)
+    const json = await res.json()
+    const list = (json.data?.results || json.data || []) as RawAlbum[]
+    return list.map((p) => toCollection(p, 'playlist'))
+  },
+
+  async searchArtists(query: string, limit = 10, signal?: AbortSignal): Promise<Artist[]> {
+    const res = await fetch(
+      `${API_BASE}/search/artists?query=${encodeURIComponent(query.trim())}&limit=${limit}`,
+      { signal },
+    )
+    if (!res.ok) throw new SourceError(`Artist search failed for "${query}"`)
+    const json = await res.json()
+    const list = (json.data?.results || json.data || []) as RawArtist[]
+    return list.map(toArtist)
+  },
+
   async track(id: string): Promise<Track | null> {
     try {
       const res = await fetch(`${API_BASE}/songs/${id}`)

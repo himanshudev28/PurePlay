@@ -14,52 +14,16 @@ import { Artwork, NowPlayingBars, QueueTailLoader } from './ui'
 import { keyOf } from '@/lib/db'
 import { usePlayerTheme } from '@/contexts/PlayerThemeContext'
 
-export function PlayerBar() {
+// ── Shared transport controls (stable module-level components) ─────────────
+function TransportControls({
+  btnClass = 'hover:bg-white/10 text-white/80 hover:text-white',
+  playBg = 'bg-white text-ink-950 hover:bg-white/90',
+}: {
+  btnClass?: string
+  playBg?: string
+}) {
   const s = usePlayer()
-  const [queueOpen, setQueueOpen] = useState(false)
-  const isFavorite = useLibrary((l) => l.isFavorite)
-  const toggleFavorite = useLibrary((l) => l.toggleFavorite)
-  const { playerTheme } = usePlayerTheme()
-
-  const barRef = useRef<HTMLDivElement>(null)
-  const current = s.current
-  const visible = !!current && !s.fullPlayerOpen && s.playerViewMode !== 'card'
-
-  /*
-    Publish the bar's height so the mobile bottom navigation bar can position itself.
-  */
-  useEffect(() => {
-    const root = document.documentElement
-    if (!visible) {
-      root.style.setProperty('--player-bar-h', '0px')
-      return
-    }
-    const el = barRef.current
-    if (!el) return
-    const observer = new ResizeObserver(([entry]) => {
-      // Add margin height for floating island layout
-      root.style.setProperty(
-        '--player-bar-h',
-        `${Math.round(entry.target.getBoundingClientRect().height) + 12}px`
-      )
-    })
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [visible])
-
-  if (!visible || !current) return null
-
-  const fav = isFavorite(current)
-  const pct = s.duration ? (s.position / s.duration) * 100 : 0
-
-  // ── Shared transport controls ──────────────────────────────────────────
-  const TransportControls = ({
-    btnClass = 'hover:bg-white/10 text-white/80 hover:text-white',
-    playBg = 'bg-white text-ink-950 hover:bg-white/90',
-  }: {
-    btnClass?: string
-    playBg?: string
-  }) => (
+  return (
     <div className="flex items-center gap-1 sm:gap-2">
       <button
         onClick={s.toggleShuffle}
@@ -104,8 +68,11 @@ export function PlayerBar() {
       </button>
     </div>
   )
+}
 
-  const VolumeControl = ({ textClass = 'text-white/60 hover:text-white' }: { textClass?: string }) => (
+function VolumeControl({ textClass = 'text-white/60 hover:text-white' }: { textClass?: string }) {
+  const s = usePlayer()
+  return (
     <div className="hidden items-center gap-2 md:flex">
       <button
         onClick={s.toggleMute}
@@ -129,16 +96,65 @@ export function PlayerBar() {
       />
     </div>
   )
+}
 
-  const ErrorBanner = () =>
-    s.error ? (
-      <div role="alert" className="flex items-center justify-between gap-3 border-t border-accent-dim bg-accent-dim/40 px-5 py-1.5 rounded-b-2xl">
-        <p className="text-xs text-accent-soft">{s.error}</p>
-        <button onClick={s.dismissError} className="rounded p-1 text-accent-soft hover:text-white" title="Dismiss" aria-label="Dismiss error">
-          <X size={13} />
-        </button>
-      </div>
-    ) : null
+function ErrorBanner() {
+  const error = usePlayer((s) => s.error)
+  const dismissError = usePlayer((s) => s.dismissError)
+  if (!error) return null
+  return (
+    <div role="alert" className="flex items-center justify-between gap-3 border-t border-accent-dim bg-accent-dim/40 px-5 py-1.5 rounded-b-2xl">
+      <p className="text-xs text-accent-soft">{error}</p>
+      <button onClick={dismissError} className="rounded p-1 text-accent-soft hover:text-white" title="Dismiss" aria-label="Dismiss error">
+        <X size={13} />
+      </button>
+    </div>
+  )
+}
+
+export function PlayerBar() {
+  const s = usePlayer()
+  const [queueOpen, setQueueOpen] = useState(false)
+  const isFavorite = useLibrary((l) => l.isFavorite)
+  const toggleFavorite = useLibrary((l) => l.toggleFavorite)
+  const { playerTheme } = usePlayerTheme()
+
+  const barRef = useRef<HTMLDivElement>(null)
+  const current = s.current
+  const visible = !!current && !s.fullPlayerOpen && s.playerViewMode !== 'card'
+
+  /*
+    Publish the bar's height so the mobile bottom navigation bar can position itself.
+  */
+  useEffect(() => {
+    const root = document.documentElement
+    if (!visible) {
+      root.style.setProperty('--player-bar-h', '0px')
+      return
+    }
+    const el = barRef.current
+    if (!el) return
+    const observer = new ResizeObserver(([entry]) => {
+      // Add margin height for floating island layout
+      root.style.setProperty(
+        '--player-bar-h',
+        `${Math.round(entry.target.getBoundingClientRect().height) + 12}px`
+      )
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [visible])
+
+  if (!visible || !current) return null
+
+  const fav = isFavorite(current)
+  const pct = s.duration ? (s.position / s.duration) * 100 : 0
+
+  // TransportControls / VolumeControl / ErrorBanner are defined at module scope
+  // (below) so their component type is stable. Defining them inline here made
+  // React remount the whole transport on every render — and the bar re-renders
+  // ~4×/s from timeupdate — which reset the hover animation into a "beating"
+  // pulse and made play/pause clicks land mid-remount.
 
   // ════════════════════════════════════════════════════════════════════════
   // THEME 1: NEUMORPHIC — Light pill island

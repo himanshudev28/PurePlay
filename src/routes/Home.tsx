@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Play, Sparkles, Flame, Music, Heart, Headphones, Radio, ListMusic, Shuffle } from 'lucide-react'
 import clsx from 'clsx'
-import type { Track, Collection } from '@/types'
+import type { Track, Collection, Artist } from '@/types'
 import { source } from '@/services'
 import { usePlayer } from '@/store/player'
 import { useLibrary } from '@/store/library'
-import { TrackCard, CollectionCard } from '@/components/Cards'
+import { TrackCard, CollectionCard, ArtistCard } from '@/components/Cards'
 import { TrackRow } from '@/components/TrackRow'
 import { SectionHeader, Skeleton, Button, ErrorNote, Artwork } from '@/components/ui'
 
@@ -17,6 +17,33 @@ const CATEGORIES = [
   { label: '🎧 Lo-Fi Chill', query: 'Hindi Lofi', icon: Headphones },
   { label: '🌟 Top 50 Hindi', query: 'Top 50 Hindi', icon: Sparkles },
 ]
+
+/** Canonical artists for the "Popular artists" row — one clean result each. */
+const ARTIST_SEEDS = [
+  'Arijit Singh', 'Diljit Dosanjh', 'Shreya Ghoshal', 'A.R. Rahman',
+  'Neha Kakkar', 'Badshah', 'Pritam', 'Yo Yo Honey Singh',
+]
+
+/** Genre/mood → curated playlist shelves (JioSaavn editorial playlists). */
+const PLAYLIST_SHELVES = [
+  { title: 'Bollywood playlists', query: 'Bollywood' },
+  { title: 'Punjabi playlists', query: 'Punjabi' },
+  { title: 'Pop playlists', query: 'Pop' },
+  { title: 'Romance', query: 'Romantic Hindi' },
+  { title: 'Hip-hop & rap', query: 'Hip Hop' },
+  { title: 'Lo-fi & chill', query: 'Lofi' },
+]
+
+/** Genre → song shelves. */
+const SONG_SHELVES = [
+  { title: 'Pop hits', query: 'Pop Hits' },
+  { title: 'Punjabi hits', query: 'Punjabi Hits' },
+]
+
+interface Shelf<T> {
+  title: string
+  items: T[]
+}
 
 /** Time-of-day greeting. Local hours; no name to personalize with (no auth). */
 function greeting(): string {
@@ -37,6 +64,9 @@ export default function Home() {
   const [trending, setTrending] = useState<Track[]>([])
   const [collections, setCollections] = useState<Collection[]>([])
   const [forYou, setForYou] = useState<Track[]>([])
+  const [artists, setArtists] = useState<Artist[]>([])
+  const [playlistShelves, setPlaylistShelves] = useState<Shelf<Collection>[]>([])
+  const [songShelves, setSongShelves] = useState<Shelf<Track>[]>([])
   const [activeCategory, setActiveCategory] = useState<string>('Bollywood Hits')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -47,11 +77,8 @@ export default function Home() {
   const favorites = useLibrary((s) => s.favorites)
   const playlists = useLibrary((s) => s.playlists)
 
-  // Fixed for the render session so it doesn't flip while the user is reading.
   const [hello] = useState(greeting)
 
-  // The strongest taste signal we have without a backend: the artist behind the
-  // most recent favorite, or failing that, the last thing played.
   const tasteArtist = useMemo(() => {
     const seed = favorites[0] || recent[0]
     return seed ? leadArtist(seed.artist) || null : null
@@ -62,12 +89,14 @@ export default function Home() {
     setError(null)
     setActiveCategory(catQuery)
 
-    Promise.all([
-      source.search(catQuery).then((r) => r.tracks.slice(0, 40)),
-      source.featuredCollections(12).catch(() => []),
-    ])
+    // /search caps at 3 songs; searchTracks (/search/songs) returns a real list.
+    const tracksP = source.searchTracks
+      ? source.searchTracks(catQuery, 40)
+      : source.search(catQuery).then((r) => r.tracks)
+
+    Promise.all([tracksP, source.featuredCollections(12).catch(() => [])])
       .then(([t, c]) => {
-        setTrending(t)
+        setTrending(t.slice(0, 40))
         if (c.length > 0) setCollections(c)
       })
       .catch((e: Error) => setError(e.message))
@@ -86,6 +115,54 @@ export default function Home() {
       .finally(() => setLoading(false))
   }, [])
 
+  // Discovery shelves — artists, genre playlists, genre songs — all in parallel.
+  // Each is independent, so one failing never blanks the others.
+  useEffect(() => {
+    let active = true
+
+    if (source.searchArtists) {
+      void Promise.all(
+        ARTIST_SEEDS.map((n) =>
+          source.searchArtists!(n, 1)
+            .then((a) => a[0] ?? null)
+            .catch(() => null),
+        ),
+      ).then((list) => {
+        if (active) setArtists(list.filter((a): a is Artist => !!a))
+      })
+    }
+
+    if (source.searchPlaylists) {
+      void Promise.all(
+        PLAYLIST_SHELVES.map((s) =>
+          source
+            .searchPlaylists!(s.query, 10)
+            .then((items) => ({ title: s.title, items }))
+            .catch(() => ({ title: s.title, items: [] as Collection[] })),
+        ),
+      ).then((shelves) => {
+        if (active) setPlaylistShelves(shelves.filter((s) => s.items.length > 0))
+      })
+    }
+
+    const songFetch = source.searchTracks
+    if (songFetch) {
+      void Promise.all(
+        SONG_SHELVES.map((s) =>
+          songFetch(s.query, 20)
+            .then((items) => ({ title: s.title, items }))
+            .catch(() => ({ title: s.title, items: [] as Track[] })),
+        ),
+      ).then((shelves) => {
+        if (active) setSongShelves(shelves.filter((s) => s.items.length > 0))
+      })
+    }
+
+    return () => {
+      active = false
+    }
+  }, [])
+
   // Taste shelf — refreshed whenever the top favorite/recent artist changes.
   useEffect(() => {
     if (!tasteArtist) {
@@ -93,10 +170,12 @@ export default function Home() {
       return
     }
     let active = true
-    void source
-      .search(tasteArtist)
-      .then((r) => {
-        if (active) setForYou(r.tracks.slice(0, 12))
+    const p = source.searchTracks
+      ? source.searchTracks(tasteArtist, 12)
+      : source.search(tasteArtist).then((r) => r.tracks)
+    void p
+      .then((tracks) => {
+        if (active) setForYou(tracks.slice(0, 12))
       })
       .catch(() => {
         /* the rest of the page is unaffected by a missing taste shelf */
@@ -109,11 +188,6 @@ export default function Home() {
   const hero = trending[0]
 
   return (
-    /*
-      The negative margin mirrors Shell's padding exactly (px-4 py-6, sm:px-6);
-      overflow-hidden keeps the offset glow circles from causing horizontal
-      scroll.
-    */
     <div className="relative -mx-4 -my-6 space-y-10 overflow-hidden bg-[var(--shell-bg,#070708)] text-[var(--color-ink-200,#c6c6d2)] transition-colors duration-300 px-4 py-6 sm:-mx-6 sm:px-6">
       <div aria-hidden className="pointer-events-none absolute -top-20 -left-20 h-[420px] w-[420px] rounded-full bg-accent/20 blur-[140px]" />
       <div aria-hidden className="pointer-events-none absolute top-1/3 -right-20 h-[420px] w-[420px] rounded-full bg-accent/15 blur-[150px]" />
@@ -164,9 +238,6 @@ export default function Home() {
               <Button
                 size="lg"
                 variant="outline"
-                // playQueue(list, randomIndex) only randomises the *first*
-                // track and then plays the rest in order — playShuffled also
-                // turns the mode on, so shuffle lasts past one song
                 onClick={() => void playShuffled(trending)}
                 disabled={!trending.length}
               >
@@ -231,6 +302,80 @@ export default function Home() {
         </section>
       )}
 
+      {/* Popular artists */}
+      {artists.length > 0 && (
+        <section>
+          <SectionHeader title="Popular artists" />
+          <div className="shelf">
+            {artists.map((a) => (
+              <ArtistCard key={`${a.source}-${a.id}`} artist={a} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Trending / category shelf */}
+      <section>
+        <SectionHeader
+          title={activeCategory || 'Trending hits'}
+          action={
+            <Button size="sm" variant="ghost" onClick={() => void playQueue(trending, 0)} disabled={!trending.length}>
+              Play all
+            </Button>
+          }
+        />
+        <div className="shelf">
+          {loading
+            ? Array.from({ length: 8 }, (_, i) => (
+                <Skeleton key={i} className="h-[212px] w-[152px] shrink-0 sm:w-[168px]" />
+              ))
+            : trending.slice(0, 20).map((t) => <TrackCard key={`${t.source}-${t.id}`} track={t} queue={trending} />)}
+        </div>
+      </section>
+
+      {/* Genre playlist shelves */}
+      {playlistShelves.map((shelf) => (
+        <section key={shelf.title}>
+          <SectionHeader title={shelf.title} />
+          <div className="shelf">
+            {shelf.items.map((c) => (
+              <CollectionCard key={`${c.source}-${c.id}`} collection={c} />
+            ))}
+          </div>
+        </section>
+      ))}
+
+      {/* Genre song shelves */}
+      {songShelves.map((shelf) => (
+        <section key={shelf.title}>
+          <SectionHeader
+            title={shelf.title}
+            action={
+              <Button size="sm" variant="ghost" onClick={() => void playQueue(shelf.items, 0)}>
+                Play all
+              </Button>
+            }
+          />
+          <div className="shelf">
+            {shelf.items.map((t) => (
+              <TrackCard key={`${shelf.title}-${t.source}-${t.id}`} track={t} queue={shelf.items} />
+            ))}
+          </div>
+        </section>
+      ))}
+
+      {/* Featured albums & playlists */}
+      {collections.length > 0 && (
+        <section>
+          <SectionHeader title="Albums & playlists" />
+          <div className="shelf">
+            {collections.map((c) => (
+              <CollectionCard key={`${c.source}-${c.id}`} collection={c} />
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* User's own playlists */}
       {playlists.length > 0 && (
         <section>
@@ -264,37 +409,6 @@ export default function Home() {
                   {p.tracks.length} track{p.tracks.length === 1 ? '' : 's'}
                 </p>
               </button>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Trending / category shelf */}
-      <section>
-        <SectionHeader
-          title={activeCategory || 'Trending hits'}
-          action={
-            <Button size="sm" variant="ghost" onClick={() => void playQueue(trending, 0)} disabled={!trending.length}>
-              Play all
-            </Button>
-          }
-        />
-        <div className="shelf">
-          {loading
-            ? Array.from({ length: 8 }, (_, i) => (
-                <Skeleton key={i} className="h-[212px] w-[152px] shrink-0 sm:w-[168px]" />
-              ))
-            : trending.slice(0, 20).map((t) => <TrackCard key={`${t.source}-${t.id}`} track={t} queue={trending} />)}
-        </div>
-      </section>
-
-      {/* Featured albums & playlists */}
-      {collections.length > 0 && (
-        <section>
-          <SectionHeader title="Albums & playlists" />
-          <div className="shelf">
-            {collections.map((c) => (
-              <CollectionCard key={`${c.source}-${c.id}`} collection={c} />
             ))}
           </div>
         </section>

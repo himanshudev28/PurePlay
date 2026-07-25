@@ -29,6 +29,10 @@ export interface MusicSource {
    * back to `search()`.
    */
   searchTracks?(query: string, limit?: number, signal?: AbortSignal): Promise<Track[]>
+  /** Curated playlists for a genre/mood term — powers the discovery shelves. */
+  searchPlaylists?(query: string, limit?: number, signal?: AbortSignal): Promise<Collection[]>
+  /** Artists matching a term, with avatars — powers the "Popular artists" row. */
+  searchArtists?(query: string, limit?: number, signal?: AbortSignal): Promise<Artist[]>
   track(id: string): Promise<Track | null>
   artist(id: string): Promise<{ artist: Artist; tracks: Track[] } | null>
   collection(id: string): Promise<{ collection: Collection; tracks: Track[] } | null>
