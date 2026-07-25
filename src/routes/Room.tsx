@@ -1,44 +1,55 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Users, Copy, Check, Send, LogOut, Crown, Radio } from 'lucide-react'
 import clsx from 'clsx'
 import { usePlayer } from '@/store/player'
-import {
-  connectRoom, generateRoomCode, expectedPosition,
-  HARD_SEEK_THRESHOLD, DRIFT_DEADZONE,
-  type RoomMessage, type RoomMember, type RoomTransport,
-} from '@/lib/room'
+import { useRoom } from '@/store/room'
+import { generateRoomCode, DRIFT_DEADZONE } from '@/lib/room'
 import { Button, EmptyState, Artwork } from '@/components/ui'
-
-interface ChatLine { id: string; name: string; text: string; at: number }
 
 export default function Room() {
   const [params, setParams] = useSearchParams()
-  const roomId = params.get('id') ?? ''
-  const [name, setName] = useState(() => localStorage.getItem('lf:name') ?? '')
-  const [joined, setJoined] = useState(false)
+  const urlId = params.get('id') ?? ''
 
-  if (!joined) {
-    return <RoomLobby roomId={roomId} name={name} setName={setName} onJoin={(id) => { setParams({ id }); setJoined(true) }} />
+  const roomId = useRoom((s) => s.roomId)
+  const savedName = useRoom((s) => s.name)
+  const join = useRoom((s) => s.join)
+  const [name, setName] = useState(savedName)
+
+  // Keep the URL in step with the live room so invite links and reloads work.
+  useEffect(() => {
+    if (roomId && urlId !== roomId) setParams({ id: roomId })
+  }, [roomId, urlId, setParams])
+
+  // Returning to a shared link (or reload) while a name is known rejoins
+  // automatically instead of dropping the user back on the lobby.
+  useEffect(() => {
+    if (!roomId && urlId && savedName.trim()) join(urlId.toUpperCase(), savedName.trim())
+  }, [roomId, urlId, savedName, join])
+
+  if (!roomId) {
+    return <RoomLobby urlId={urlId} name={name} setName={setName} onJoin={(id) => join(id, name.trim() || 'Guest')} />
   }
-  return <RoomSession roomId={roomId} name={name} onLeave={() => { setJoined(false); setParams({}) }} />
+  return <RoomSession />
 }
 
 function RoomLobby({
-  roomId, name, setName, onJoin,
+  urlId, name, setName, onJoin,
 }: {
-  roomId: string
+  urlId: string
   name: string
   setName: (v: string) => void
   onJoin: (id: string) => void
 }) {
-  const [code, setCode] = useState(roomId)
+  const [code, setCode] = useState(urlId)
 
   const join = (id: string) => {
-    const trimmed = name.trim() || 'Guest'
-    localStorage.setItem('lf:name', trimmed)
-    onJoin(id.trim().toUpperCase())
+    const trimmed = id.trim().toUpperCase()
+    if (!trimmed) return
+    onJoin(trimmed)
   }
+
+  const usingBroker = !import.meta.env.VITE_ROOM_WS
 
   return (
     <div className="mx-auto max-w-lg space-y-6 py-8">
@@ -81,9 +92,6 @@ function RoomLobby({
             onKeyDown={(e) => e.key === 'Enter' && code.trim() && join(code)}
             placeholder="ROOM CODE"
             maxLength={6}
-            // min-w-0 defeats the flex item's default min-width:auto — the
-            // wide-tracked monospace placeholder set a min-content floor that
-            // pushed the Join button 39px past the viewport on small phones
             className="min-w-0 flex-1 rounded-xl border border-ink-700 bg-ink-850 px-4 py-2.5 font-mono tracking-[0.25em] text-white uppercase placeholder:font-sans placeholder:tracking-normal placeholder:text-ink-400 focus:border-accent focus:outline-none"
           />
           <Button variant="solid" onClick={() => join(code)} disabled={!code.trim()} className="shrink-0">
@@ -93,170 +101,38 @@ function RoomLobby({
       </div>
 
       <p className="text-center text-xs text-ink-400">
-        {import.meta.env.VITE_ROOM_WS
-          ? 'Connected to a live sync server.'
-          : 'No sync server configured — rooms sync across tabs on this device. Set VITE_ROOM_WS to go multi-user.'}
+        {usingBroker
+          ? 'Rooms sync over the internet — share the code with anyone, on any device.'
+          : 'Connected to your own sync server.'}
       </p>
     </div>
   )
 }
 
-function RoomSession({ roomId, name, onLeave }: { roomId: string; name: string; onLeave: () => void }) {
-  const [members, setMembers] = useState<RoomMember[]>([])
-  const [chat, setChat] = useState<ChatLine[]>([])
+function RoomSession() {
+  const roomId = useRoom((s) => s.roomId) ?? ''
+  const name = useRoom((s) => s.name)
+  const members = useRoom((s) => s.members)
+  const chat = useRoom((s) => s.chat)
+  const isHost = useRoom((s) => s.isHost)
+  const drift = useRoom((s) => s.drift)
+  const myId = useRoom((s) => s.myId)
+  const leave = useRoom((s) => s.leave)
+  const sendChat = useRoom((s) => s.sendChat)
+
+  const current = usePlayer((s) => s.current)
+
   const [draft, setDraft] = useState('')
   const [copied, setCopied] = useState(false)
-  const [isHost, setIsHost] = useState(false)
-  const [drift, setDrift] = useState(0)
-
-  const transport = useRef<RoomTransport | null>(null)
-  const meId = useRef(crypto.randomUUID())
   const chatEnd = useRef<HTMLDivElement>(null)
-  const isHostRef = useRef(false)
-  /** ids we've already greeted, so a join reply can't ping-pong forever */
-  const greeted = useRef<Set<string>>(new Set())
-
-  const player = usePlayer()
-
-  const send = useCallback((msg: RoomMessage) => transport.current?.send(msg), [])
-
-  useEffect(() => {
-    isHostRef.current = isHost
-  }, [isHost])
-
-  /* ---- connect ---- */
-  useEffect(() => {
-    const me: RoomMember = { id: meId.current, name, isHost: false }
-    const seen = greeted.current
-    seen.clear()
-
-    const handle = (msg: RoomMessage) => {
-      switch (msg.type) {
-        case 'join': {
-          if (msg.member.id === meId.current) return
-
-          setMembers((m) => (m.some((x) => x.id === msg.member.id) ? m : [...m, msg.member]))
-
-          // Reply ONLY the first time we see someone. Replying to every join
-          // is an infinite storm: our reply is itself a join, which they reply
-          // to, which we reply to... two members are enough to peg the CPU.
-          if (!seen.has(msg.member.id)) {
-            seen.add(msg.member.id)
-            send({ type: 'join', member: { ...me, isHost: isHostRef.current }, at: Date.now() })
-          }
-
-          // Deterministic host election: lowest id in the room wins. No timer,
-          // no race — everyone independently computes the same answer, and it
-          // re-runs on every membership change so a host leaving is covered.
-          break
-        }
-        case 'leave':
-          seen.delete(msg.memberId)
-          setMembers((m) => m.filter((x) => x.id !== msg.memberId))
-          break
-        case 'sync-request':
-          if (isHostRef.current) broadcastState()
-          break
-        case 'state': {
-          if (isHostRef.current) return // the host is the source of truth
-          applyRemoteState(msg)
-          break
-        }
-        case 'chat':
-          // our own message was already appended optimistically; a relay that
-          // echoes to the whole room would otherwise show it twice
-          if (msg.memberId === meId.current) return
-          setChat((c) => [...c, { id: msg.memberId, name: msg.name, text: msg.text, at: msg.at }])
-          break
-      }
-    }
-
-    transport.current = connectRoom(roomId, handle)
-
-    send({ type: 'join', member: me, at: Date.now() })
-    send({ type: 'sync-request', memberId: meId.current, at: Date.now() })
-
-    return () => {
-      send({ type: 'leave', memberId: meId.current, at: Date.now() })
-      transport.current?.close()
-      transport.current = null
-      seen.clear()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomId, name])
-
-  /**
-   * Host = lowest member id present. Computed from state rather than elected by
-   * timer, so it can never produce zero hosts (a timing tie) or two hosts (a
-   * slow relay), and it re-elects automatically when the host disconnects.
-   */
-  useEffect(() => {
-    const lowest = [meId.current, ...members.map((m) => m.id)].sort()[0]
-    setIsHost(lowest === meId.current)
-  }, [members])
-
-  /* ---- host broadcasts state on every change ---- */
-  const broadcastState = useCallback(() => {
-    const p = usePlayer.getState()
-    send({ type: 'state', track: p.current, position: p.position, playing: p.playing, at: Date.now() })
-  }, [send])
-
-  useEffect(() => {
-    if (!isHost) return
-    broadcastState()
-    // deliberately not depending on `position` — that would flood the channel.
-    // followers extrapolate between these updates instead.
-  }, [isHost, player.current, player.playing, broadcastState])
-
-  // periodic heartbeat so followers can correct accumulated drift
-  useEffect(() => {
-    if (!isHost) return
-    const t = setInterval(broadcastState, 5000)
-    return () => clearInterval(t)
-  }, [isHost, broadcastState])
-
-  /* ---- followers reconcile against the host ---- */
-  const applyRemoteState = useCallback((msg: Extract<RoomMessage, { type: 'state' }>) => {
-    const p = usePlayer.getState()
-    const target = expectedPosition(msg.position, msg.at, msg.playing)
-
-    // different track — load it, then line up with the host
-    const sameTrack =
-      p.current && msg.track && p.current.id === msg.track.id && p.current.source === msg.track.source
-    if (msg.track && !sameTrack) {
-      void p.playTrack(msg.track).then(() => {
-        const after = usePlayer.getState()
-        after.seek(target)
-        if (!msg.playing && after.playing) after.toggle()
-      })
-      return
-    }
-
-    if (!msg.track) return
-
-    // same track — correct drift only when it's worth the interruption
-    const delta = target - p.position
-    setDrift(delta)
-    if (Math.abs(delta) > HARD_SEEK_THRESHOLD) {
-      p.seek(target)
-    } else if (Math.abs(delta) > DRIFT_DEADZONE) {
-      // small drift: nudge rather than seek, so audio doesn't glitch
-      p.seek(p.position + delta * 0.5)
-    }
-
-    if (msg.playing !== p.playing) p.toggle()
-  }, [])
 
   useEffect(() => {
     chatEnd.current?.scrollIntoView({ behavior: 'smooth' })
   }, [chat])
 
-  const sendChat = () => {
-    const text = draft.trim()
-    if (!text) return
-    const line = { type: 'chat' as const, memberId: meId.current, name, text, at: Date.now() }
-    send(line)
-    setChat((c) => [...c, { id: meId.current, name, text, at: line.at }])
+  const submit = () => {
+    if (!draft.trim()) return
+    sendChat(draft)
     setDraft('')
   }
 
@@ -288,19 +164,19 @@ function RoomSession({ roomId, name, onLeave }: { roomId: string; name: string; 
               {copied ? <Check size={13} /> : <Copy size={13} />}
               {copied ? 'Copied' : 'Invite'}
             </Button>
-            <Button size="sm" variant="ghost" onClick={onLeave}>
+            <Button size="sm" variant="ghost" onClick={leave}>
               <LogOut size={13} />
               Leave
             </Button>
           </div>
         </header>
 
-        {player.current ? (
+        {current ? (
           <div className="flex items-center gap-4 rounded-2xl border border-ink-800 bg-ink-900/60 p-5">
-            <Artwork src={player.current.artwork} alt={player.current.title} className="h-20 w-20" />
+            <Artwork src={current.artwork} alt={current.title} className="h-20 w-20" />
             <div className="min-w-0 flex-1">
-              <p className="truncate text-lg font-semibold text-white">{player.current.title}</p>
-              <p className="truncate text-sm text-ink-400">{player.current.artist}</p>
+              <p className="truncate text-lg font-semibold text-white">{current.title}</p>
+              <p className="truncate text-sm text-ink-400">{current.artist}</p>
               <p className="mt-1.5 text-xs text-ink-400">
                 {isHost
                   ? 'You control playback for everyone.'
@@ -314,7 +190,7 @@ function RoomSession({ roomId, name, onLeave }: { roomId: string; name: string; 
             title={isHost ? 'Pick something to play' : 'Waiting for the host'}
             hint={
               isHost
-                ? 'Play any track and everyone in the room hears it at the same moment.'
+                ? 'Play any track and everyone in the room hears it at the same moment. You can browse other pages — the room stays connected.'
                 : 'Playback will start automatically when the host presses play.'
             }
           />
@@ -342,12 +218,12 @@ function RoomSession({ roomId, name, onLeave }: { roomId: string; name: string; 
         <div className="scrollbar-thin flex-1 space-y-3 overflow-y-auto p-4">
           {chat.length === 0 && <p className="text-xs text-ink-400">Say something to the room.</p>}
           {chat.map((c, i) => (
-            <div key={`${c.at}-${i}`} className={clsx(c.id === meId.current && 'text-right')}>
-              <p className="text-[11px] text-ink-400">{c.id === meId.current ? 'You' : c.name}</p>
+            <div key={`${c.at}-${i}`} className={clsx(c.id === myId && 'text-right')}>
+              <p className="text-[11px] text-ink-400">{c.id === myId ? 'You' : c.name}</p>
               <p
                 className={clsx(
                   'mt-0.5 inline-block max-w-[85%] rounded-2xl px-3 py-1.5 text-sm',
-                  c.id === meId.current ? 'bg-accent text-ink-950' : 'bg-ink-800 text-ink-200',
+                  c.id === myId ? 'bg-accent text-ink-950' : 'bg-ink-800 text-ink-200',
                 )}
               >
                 {c.text}
@@ -360,12 +236,12 @@ function RoomSession({ roomId, name, onLeave }: { roomId: string; name: string; 
           <input
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && sendChat()}
+            onKeyDown={(e) => e.key === 'Enter' && submit()}
             placeholder="Message…"
             className="flex-1 rounded-full border border-ink-700 bg-ink-850 px-3.5 py-2 text-sm text-white placeholder:text-ink-400 focus:border-accent focus:outline-none"
           />
           <button
-            onClick={sendChat}
+            onClick={submit}
             disabled={!draft.trim()}
             className="rounded-full bg-accent p-2.5 text-ink-950 transition hover:bg-accent-soft disabled:opacity-40"
           >

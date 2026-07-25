@@ -61,19 +61,13 @@ function broadcastTransport(roomId: string, onMessage: Handler): RoomTransport {
   }
 }
 
-export function connectRoom(roomId: string, onMessage: Handler): RoomTransport {
-  const wsUrl = import.meta.env.VITE_ROOM_WS as string | undefined
-
-  // No server configured — cross-tab only, same as before.
-  if (!wsUrl) return broadcastTransport(roomId, onMessage)
-
+/** Self-hosted raw-WS relay (server/room-relay.mjs), used only when configured. */
+function wsTransport(wsUrl: string, roomId: string, onMessage: Handler): RoomTransport {
   let ws: WebSocket | null = new WebSocket(`${wsUrl}?room=${encodeURIComponent(roomId)}`)
   let opened = false
   let fallback: RoomTransport | null = null
   const queued: RoomMessage[] = []
 
-  // If the server can't be reached, don't leave the room dead — degrade to the
-  // cross-tab channel so at least same-device sync keeps working.
   const degrade = () => {
     if (fallback || opened) return
     ws = null
@@ -89,7 +83,7 @@ export function connectRoom(roomId: string, onMessage: Handler): RoomTransport {
     try {
       onMessage(JSON.parse(e.data as string) as RoomMessage)
     } catch {
-      // ignore malformed frames rather than tearing the room down
+      /* ignore malformed frames */
     }
   })
   ws.addEventListener('error', degrade)
@@ -106,6 +100,81 @@ export function connectRoom(roomId: string, onMessage: Handler): RoomTransport {
       else ws?.close()
     },
   }
+}
+
+/**
+ * Default transport: a public MQTT broker over WSS. No server of ours, so it
+ * works on Vercel and every other static/serverless host. Each room is a topic;
+ * the broker fans a publish out to everyone subscribed. Falls back to cross-tab
+ * sync if the broker can't be reached.
+ */
+function mqttTransport(roomId: string, onMessage: Handler): RoomTransport {
+  const url = (import.meta.env.VITE_ROOM_BROKER as string | undefined) || DEFAULT_BROKER
+  const topic = roomTopic(roomId)
+  const queued: RoomMessage[] = []
+  let connected = false
+  let fallback: RoomTransport | null = null
+
+  const client = mqtt.connect(url, {
+    connectTimeout: 8000,
+    reconnectPeriod: 4000,
+    // a random client id per tab so the broker keeps our sessions distinct
+    clientId: `pureplay_${Math.random().toString(16).slice(2, 10)}`,
+    clean: true,
+  })
+
+  const degrade = () => {
+    if (fallback || connected) return
+    try {
+      client.end(true)
+    } catch {
+      /* already gone */
+    }
+    fallback = broadcastTransport(roomId, onMessage)
+    queued.splice(0).forEach((m) => fallback!.send(m))
+  }
+
+  client.on('connect', () => {
+    connected = true
+    client.subscribe(topic)
+    queued.splice(0).forEach((m) => client.publish(topic, JSON.stringify(m)))
+  })
+  client.on('message', (_topic, payload) => {
+    try {
+      onMessage(JSON.parse(payload.toString()) as RoomMessage)
+    } catch {
+      /* ignore malformed frames */
+    }
+  })
+  client.on('error', degrade)
+  // mqtt.js keeps retrying forever; if the first attempt hasn't landed, degrade
+  const timer = setTimeout(degrade, 9000)
+
+  return {
+    send(msg) {
+      if (fallback) return fallback.send(msg)
+      if (connected) client.publish(topic, JSON.stringify(msg))
+      else queued.push(msg)
+    },
+    close() {
+      clearTimeout(timer)
+      if (fallback) fallback.close()
+      else
+        try {
+          client.end(true)
+        } catch {
+          /* already gone */
+        }
+    },
+  }
+}
+
+export function connectRoom(roomId: string, onMessage: Handler): RoomTransport {
+  const wsUrl = import.meta.env.VITE_ROOM_WS as string | undefined
+  // Explicit self-hosted relay wins; otherwise the zero-config public broker.
+  return wsUrl
+    ? wsTransport(wsUrl, roomId, onMessage)
+    : mqttTransport(roomId, onMessage)
 }
 
 /**

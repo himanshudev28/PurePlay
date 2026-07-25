@@ -126,9 +126,7 @@ export default function Home() {
             <span className="rounded-full bg-accent/15 px-2.5 py-0.5 text-[10px] font-bold text-accent uppercase tracking-wider">Ad-Free</span>
           </div>
           <p className="text-sm text-ink-300 sm:text-base">
-            {hello} 👋 — {tasteArtist
-              ? `More ${tasteArtist} and the music you love, cued up.`
-              : 'Unlimited free music streaming without ads.'}
+            {hello} 👋 — Unlimited free music streaming without ads.
           </p>
         </div>
       </header>
