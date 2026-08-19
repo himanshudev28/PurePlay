@@ -98,7 +98,7 @@ export default function GridHome({ feed }: { feed: HomeFeed }) {
       <div aria-hidden className="pointer-events-none absolute -top-24 -left-24 h-[420px] w-[420px] rounded-full bg-accent/15 blur-[150px]" />
 
       {/* Mood & genre chips — the row that opens the reference layout */}
-      <div className="relative flex flex-wrap items-center gap-2.5">
+      <div className="chip-row relative items-center">
         <button
           onClick={() => loadTrending()}
           aria-pressed={activeCategory === null}

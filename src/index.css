@@ -170,6 +170,28 @@
   }
 
   /*
+    A row of filter chips.
+
+    Wrapped, seven chips cost three lines and about 150px of a phone screen —
+    most of it the ragged gap at the end of each line — before a single song is
+    visible. One scrolling line costs 40px and still reaches every chip. It
+    bleeds to the screen edges so the row reads as scrollable, and goes back to
+    wrapping at `sm`, where they all fit anyway.
+  */
+  .chip-row {
+    @apply -mx-4 flex gap-2.5 overflow-x-auto scrollbar-none px-4 pb-1;
+    scroll-snap-type: x proximity;
+  }
+  .chip-row > * {
+    flex-shrink: 0;
+  }
+  @media (min-width: 40rem) {
+    .chip-row {
+      @apply mx-0 flex-wrap overflow-visible px-0 pb-0;
+    }
+  }
+
+  /*
     A list-row control that reveals itself on hover.
 
     Tailwind's `group-hover:` compiles to a bare `:hover` selector with no

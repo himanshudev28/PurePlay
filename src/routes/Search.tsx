@@ -309,7 +309,7 @@ export default function Search() {
       {/* quick-search chips when empty */}
       {!query.trim() && (
         <div className="space-y-6">
-          <div className="flex flex-wrap gap-2">
+          <div className="chip-row gap-2">
             {QUICK_SEARCHES.map(({ label, icon: Icon, query: q }) => (
               <button
                 key={label}

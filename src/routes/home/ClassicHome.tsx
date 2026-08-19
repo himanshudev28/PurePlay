@@ -119,7 +119,7 @@ export default function ClassicHome({ feed }: { feed: HomeFeed }) {
       {/* Category pills */}
       <section className="space-y-3">
         <h2 className="text-sm font-semibold text-ink-200">Explore moods & genres</h2>
-        <div role="group" aria-label="Browse by mood or genre" className="flex flex-wrap gap-2.5">
+        <div role="group" aria-label="Browse by mood or genre" className="chip-row">
           {CATEGORIES.map(({ label, query }) => (
             <button
               key={label}

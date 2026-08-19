@@ -1,5 +1,7 @@
 import type { Track } from '@/types'
+import { useIsCompact } from '@/hooks/useMediaQuery'
 import { CompactTrackRow } from './CompactTrackRow'
+import { CompactTrackColumns } from './SongShelf'
 import { Skeleton } from './ui'
 
 /**
@@ -9,6 +11,11 @@ import { Skeleton } from './ui'
  * so the fastest way to actually start music was to scroll past everything
  * else. Column-flowed inside one card, fifteen songs fit above the fold on a
  * desktop and press-to-play is the first thing on screen.
+ *
+ * On a phone those same fifteen rows ran nearly a thousand pixels down the page
+ * and pushed every browsing shelf below the fold, so there they page sideways
+ * four at a time — the same gesture, and the same shape, as the shelves under
+ * it.
  */
 export function QuickPicks({
   title,
@@ -23,6 +30,8 @@ export function QuickPicks({
   loading?: boolean
   action?: React.ReactNode
 }) {
+  const compact = useIsCompact()
+
   return (
     <section className="animate-fade-up rounded-2xl border border-white/10 bg-white/[0.03] p-3 backdrop-blur-xl sm:p-4">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-3 px-2">
@@ -35,16 +44,28 @@ export function QuickPicks({
         {action}
       </div>
 
-      {/*
-        Column-major on wide screens so the list reads top-to-bottom in each
-        column, the way the reference layout does — `grid-flow-col` with a
-        fixed row count is what produces that, rather than left-to-right wrap.
-      */}
-      <div className="grid grid-cols-1 gap-x-4 gap-y-0.5 md:grid-flow-col md:grid-cols-2 md:grid-rows-[repeat(8,minmax(0,1fr))] xl:grid-cols-3 xl:grid-rows-[repeat(5,minmax(0,1fr))]">
-        {loading && !tracks.length
-          ? Array.from({ length: 15 }, (_, i) => <Skeleton key={i} className="h-[60px] w-full" />)
-          : tracks.map((t) => <CompactTrackRow key={`${t.source}-${t.id}`} track={t} queue={tracks} />)}
-      </div>
+      {compact ? (
+        <div className="shelf -mx-1 px-1">
+          {loading && !tracks.length ? (
+            Array.from({ length: 2 }, (_, i) => (
+              <Skeleton key={i} className="h-[248px] w-[74vw] max-w-[360px] shrink-0" />
+            ))
+          ) : (
+            <CompactTrackColumns tracks={tracks} width="w-[74vw] max-w-[360px]" />
+          )}
+        </div>
+      ) : (
+        /*
+          Column-major on wide screens so the list reads top-to-bottom in each
+          column, the way the reference layout does — `grid-flow-col` with a
+          fixed row count is what produces that, rather than left-to-right wrap.
+        */
+        <div className="grid grid-cols-1 gap-x-4 gap-y-0.5 md:grid-flow-col md:grid-cols-2 md:grid-rows-[repeat(8,minmax(0,1fr))] xl:grid-cols-3 xl:grid-rows-[repeat(5,minmax(0,1fr))]">
+          {loading && !tracks.length
+            ? Array.from({ length: 15 }, (_, i) => <Skeleton key={i} className="h-[60px] w-full" />)
+            : tracks.map((t) => <CompactTrackRow key={`${t.source}-${t.id}`} track={t} queue={tracks} />)}
+        </div>
+      )}
 
       {!loading && !tracks.length && (
         <p className="px-2 py-6 text-sm text-ink-400">

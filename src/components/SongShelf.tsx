@@ -1,3 +1,4 @@
+import clsx from 'clsx'
 import type { Track } from '@/types'
 import { useIsCompact } from '@/hooks/useMediaQuery'
 import { CompactTrackRow } from './CompactTrackRow'
@@ -11,6 +12,48 @@ function chunk<T>(items: T[], size: number): T[][] {
   const out: T[][] = []
   for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size))
   return out
+}
+
+/**
+ * Songs as dense rows, stacked into sideways-paging columns.
+ *
+ * The phone form of every song list on the home page: a shelf's worth of cards
+ * and the fifteen-song quick-picks block both become this, so the page reads as
+ * one pattern instead of two. Renders as direct children of a `.shelf` flex
+ * scroller.
+ */
+export function CompactTrackColumns({
+  tracks,
+  queue,
+  keyPrefix,
+  rows = ROWS,
+  /**
+   * Column width. The default leaves the next column peeking past the edge of
+   * a full-bleed shelf; a caller inside a padded card has to go narrower, or
+   * its own padding hides the peek and the row stops looking scrollable.
+   */
+  width = 'w-[86vw] max-w-[420px]',
+}: {
+  tracks: Track[]
+  queue?: Track[]
+  keyPrefix?: string
+  rows?: number
+  width?: string
+}) {
+  const list = queue ?? tracks
+  const key = (t: Track) => `${keyPrefix ?? ''}${t.source}-${t.id}`
+  return (
+    <>
+      {chunk(tracks, rows).map((column) => (
+        // Keyed by its first track so re-ordering a shelf doesn't reshuffle rows.
+        <div key={key(column[0])} className={clsx('shrink-0 space-y-0.5', width)}>
+          {column.map((t) => (
+            <CompactTrackRow key={key(t)} track={t} queue={list} />
+          ))}
+        </div>
+      ))}
+    </>
+  )
 }
 
 /**
@@ -62,18 +105,7 @@ export function SongShelfItems({
   }
 
   if (compact) {
-    return (
-      <>
-        {chunk(tracks, ROWS).map((column) => (
-          // Keyed by its first track so re-ordering a shelf doesn't reshuffle rows.
-          <div key={key(column[0])} className="w-[86vw] max-w-[420px] shrink-0 space-y-0.5">
-            {column.map((t) => (
-              <CompactTrackRow key={key(t)} track={t} queue={list} />
-            ))}
-          </div>
-        ))}
-      </>
-    )
+    return <CompactTrackColumns tracks={tracks} queue={list} keyPrefix={keyPrefix} />
   }
 
   return (
