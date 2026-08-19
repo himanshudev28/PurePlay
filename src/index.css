@@ -67,6 +67,19 @@
     color: var(--color-ink-200, #c6c6d2);
     margin: 0;
     overscroll-behavior-y: none;
+    /* One stray fixed-width child used to give the whole page a horizontal
+       scrollbar on narrow phones. `clip` (not `hidden`) contains it without
+       turning <body> into a scroll container, so `position: sticky` on the
+       header keeps working. */
+    overflow-x: clip;
+  }
+
+  /* The other common source of that overflow: media that declares its own
+     intrinsic width and ignores the column it was dropped into. */
+  img,
+  video,
+  iframe {
+    max-width: 100%;
   }
 
   /* Light theme overrides so cards, titles, headers on light themes remain high-contrast */
@@ -145,6 +158,12 @@
   .shelf {
     @apply flex gap-4 overflow-x-auto scrollbar-none pb-2;
     scroll-snap-type: x proximity;
+    scroll-behavior: smooth;
+    /* The scrollbar is hidden, so nothing said a row continued past the edge
+       except a card that happened to be cut in half. Feathering the trailing
+       edge says it at a glance, at every scroll position. */
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 44px), transparent 100%);
+    mask-image: linear-gradient(to right, #000 calc(100% - 44px), transparent 100%);
   }
   .shelf > * {
     scroll-snap-align: start;
@@ -239,28 +258,11 @@
     -webkit-backdrop-filter: blur(20px) saturate(1.5);
   }
 
-  /* ── Glass Pro: frost every surface over the cinematic gradient backdrop ──
-     Scoped to the theme so it never affects the others. `[class~='…']` matches
-     the exact utility token, so hover-only variants (hover:bg-ink-800) and
-     opacity variants aren't caught — only real panels get the blur. */
-  :root[data-player-theme='glasspro'] .glass {
-    background: rgba(255, 255, 255, 0.07);
-    backdrop-filter: blur(26px) saturate(1.7);
-    -webkit-backdrop-filter: blur(26px) saturate(1.7);
-    border: 1px solid rgba(255, 255, 255, 0.14);
-  }
-  :root[data-player-theme='glasspro'] :is(
-      [class~='bg-ink-900'],
-      [class~='bg-ink-900/60'],
-      [class~='bg-ink-900/50'],
-      [class~='bg-ink-900/40'],
-      [class~='bg-ink-850'],
-      [class~='bg-black/40'],
-      [class~='bg-black/30']
-    ) {
-    backdrop-filter: blur(18px) saturate(1.45);
-    -webkit-backdrop-filter: blur(18px) saturate(1.45);
-    border-color: rgba(255, 255, 255, 0.12);
+  /* Bottom padding that clears the iOS home indicator / Android gesture bar.
+     Needed wherever a scroll container runs to the bottom edge of the viewport
+     with no chrome of its own beneath it. */
+  .pb-safe {
+    padding-bottom: max(env(safe-area-inset-bottom, 0px), 1.25rem);
   }
 
   /* glow accent */
@@ -324,6 +326,16 @@
     animation-delay: var(--d, 0ms);
   }
 
+  /* The full player is a full-viewport takeover; appearing instantly reads as
+     a page swap, rising into place reads as a sheet being pulled up. */
+  @keyframes player-rise {
+    from { opacity: 0; transform: translateY(26px) scale(0.985); }
+    to   { opacity: 1; transform: none; }
+  }
+  .animate-player-in {
+    animation: player-rise 340ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
   /* slow drifting sheen for the hero */
   @keyframes hero-sheen {
     0%   { transform: translateX(-120%) skewX(-12deg); }
@@ -356,5 +368,350 @@
   .animate-pulse {
     animation-duration: 3s !important;
     animation-iteration-count: infinite !important;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LIQUID GLASS
+   ══════════════════════════════════════════════════════════════════════════
+
+   The material Glass Pro is built from. Three ingredients, and a surface only
+   reads as glass when it has all three:
+
+     1. a blurred, saturated backdrop      — you see *through* it
+     2. a specular sheen across the top    — light lands *on* it
+     3. a bright 1px edge + hairline inset — it has thickness
+
+   Everything below is either the material itself (`.lg-*`) or the mapping that
+   repaints the app's existing panel utilities with it under Glass Pro. These
+   rules deliberately sit OUTSIDE `@layer utilities`: unlayered CSS wins over
+   Tailwind's layered utilities no matter the specificity, so a panel written as
+   `bg-ink-900` becomes glass without touching the component.
+   ────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  --lg-blur: 22px;
+  --lg-sat: 175%;
+  --lg-fill: rgba(255, 255, 255, 0.07);
+  --lg-fill-strong: rgba(255, 255, 255, 0.11);
+  --lg-fill-soft: rgba(255, 255, 255, 0.045);
+  --lg-stroke: rgba(255, 255, 255, 0.16);
+  --lg-stroke-soft: rgba(255, 255, 255, 0.1);
+
+  /* Light raking across the top of the pane, fading out before the middle —
+     the single most recognisable cue that a surface is glass and not just a
+     translucent rectangle. */
+  --lg-sheen: linear-gradient(
+    168deg,
+    rgba(255, 255, 255, 0.17) 0%,
+    rgba(255, 255, 255, 0.06) 32%,
+    rgba(255, 255, 255, 0) 58%,
+    rgba(255, 255, 255, 0.035) 100%
+  );
+
+  /* The pane's thickness: a bright top bevel, a dim bottom one, faint sides. */
+  --lg-edge:
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.05),
+    inset 1px 0 0 rgba(255, 255, 255, 0.06),
+    inset -1px 0 0 rgba(255, 255, 255, 0.06);
+
+  --lg-drop: 0 18px 40px -18px rgba(2, 6, 23, 0.85);
+  --lg-drop-lift: 0 26px 60px -22px rgba(2, 6, 23, 0.95);
+}
+
+.lg-glass {
+  background-color: var(--lg-fill);
+  background-image: var(--lg-sheen);
+  -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-sat));
+  backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-sat));
+  border: 1px solid var(--lg-stroke);
+  box-shadow: var(--lg-edge), var(--lg-drop);
+}
+
+/* For chrome that floats over scrolling content and has to stay legible. */
+.lg-glass-strong {
+  background-color: var(--lg-fill-strong);
+  background-image: var(--lg-sheen);
+  -webkit-backdrop-filter: blur(30px) saturate(190%);
+  backdrop-filter: blur(30px) saturate(190%);
+  border: 1px solid var(--lg-stroke);
+  box-shadow: var(--lg-edge), var(--lg-drop-lift);
+}
+
+/* A pane nested INSIDE glass. No second blur — stacking backdrop filters costs
+   a full extra compositor pass per element and buys nothing visually, because
+   the parent already blurred everything behind it. */
+.lg-inner {
+  background-color: var(--lg-fill-soft);
+  background-image: var(--lg-sheen);
+  border: 1px solid var(--lg-stroke-soft);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+/* ── The backdrop the glass refracts ──────────────────────────────────────
+   Glass over a flat colour just looks like grey plastic; it needs colour with
+   structure behind it. This is a fixed layer (it does not scroll away) of slow
+   drifting aurora orbs, rendered only under Glass Pro.
+
+   It sits at z-index:-1 rather than being layered above with a positive index.
+   That is deliberate: a negative index paints between the canvas background and
+   the in-flow content WITHOUT its container becoming a stacking context, so
+   every existing z-index in the app — the z-50 playlist menu that has to clear
+   the z-40 player bar, most of all — keeps meaning exactly what it did. */
+.lg-aurora {
+  display: none;
+}
+
+@keyframes lg-drift {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(9vw, -7vh, 0);
+  }
+}
+
+@keyframes lg-drift-alt {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-10vw, 8vh, 0);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   GLASS PRO
+   ══════════════════════════════════════════════════════════════════════════ */
+
+:root[data-player-theme='glasspro'] .lg-aurora {
+  display: block;
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  background:
+    radial-gradient(60rem 40rem at 12% -10%, rgba(56, 189, 248, 0.26), transparent 62%),
+    radial-gradient(52rem 38rem at 102% 2%, rgba(13, 148, 136, 0.26), transparent 58%),
+    radial-gradient(56rem 44rem at 46% 112%, rgba(129, 140, 248, 0.24), transparent 62%);
+}
+
+:root[data-player-theme='glasspro'] .lg-aurora::before,
+:root[data-player-theme='glasspro'] .lg-aurora::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  /* vmax keeps the orbs proportional from a 320px phone to an ultrawide — a
+     px radius that reads as an aurora on a laptop is a dot on a monitor. The
+     cap stops a 4K display from allocating (and blurring) a 2500px texture. */
+  width: min(72vmax, 1400px);
+  height: min(72vmax, 1400px);
+  filter: blur(80px);
+  opacity: 0.5;
+  will-change: transform;
+}
+
+:root[data-player-theme='glasspro'] .lg-aurora::before {
+  top: -28%;
+  left: -22%;
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.55), transparent 68%);
+  animation: lg-drift 32s ease-in-out infinite alternate;
+}
+
+:root[data-player-theme='glasspro'] .lg-aurora::after {
+  right: -24%;
+  bottom: -28%;
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.5), transparent 68%);
+  animation: lg-drift-alt 38s ease-in-out infinite alternate;
+}
+
+/* Inside the full-screen player the aurora is not the page backdrop, it is a
+   wash *over* the track's colour bloom — and the bloom is a positioned sibling,
+   which a negative index would always paint under. The dialog is its own
+   stacking context, so a plain z-0 here cannot leak out and disturb the app's
+   layering. */
+:root[data-player-theme='glasspro'] .lg-aurora--overlay {
+  z-index: 0;
+  opacity: 0.75;
+}
+
+/* ── App chrome ───────────────────────────────────────────────────────────
+   Shell paints the rail/header/tab bar from inline `--shell-*` vars, so these
+   need `!important` to win. Everything else on the page is class-driven and
+   does not. */
+:root[data-player-theme='glasspro'] [data-shell] {
+  background-color: var(--lg-fill) !important;
+  background-image: var(--lg-sheen) !important;
+  -webkit-backdrop-filter: blur(30px) saturate(190%);
+  backdrop-filter: blur(30px) saturate(190%);
+  border-color: var(--lg-stroke) !important;
+}
+
+:root[data-player-theme='glasspro'] [data-shell='rail'],
+:root[data-player-theme='glasspro'] [data-shell='drawer'] {
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.06), 0 0 60px rgba(2, 6, 23, 0.5);
+}
+
+:root[data-player-theme='glasspro'] [data-shell='topbar'] {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 8px 30px -20px rgba(2, 6, 23, 0.9);
+}
+
+:root[data-player-theme='glasspro'] [data-shell='tabbar'] {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 -10px 30px -20px rgba(2, 6, 23, 0.9);
+}
+
+/* The active nav item is a glass lozenge rather than a flat tint. */
+:root[data-player-theme='glasspro'] [data-shell] a[aria-current='page'] {
+  background-image: var(--lg-sheen);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 0 20px rgba(56, 189, 248, 0.18);
+}
+
+/* The shell root and any page that repaints `--shell-bg` over its own bleed
+   area are both in-flow, so they paint *over* the z-index:-1 aurora. Under
+   Glass Pro they hand the backdrop back: <body> already carries `--shell-bg`
+   as the base colour, and the aurora supplies everything above it. */
+:root[data-player-theme='glasspro'] :is([data-app-root], [data-page-surface]) {
+  background: transparent !important;
+}
+
+/* ── Panels ───────────────────────────────────────────────────────────────
+   `[class~='…']` matches the exact utility token, so `hover:bg-ink-900` and
+   friends are left alone — only surfaces that are painted at rest turn to
+   glass. */
+:root[data-player-theme='glasspro'] :is(
+    .glass,
+    [class~='bg-ink-900'],
+    [class~='bg-ink-900/95'],
+    [class~='bg-ink-900/90'],
+    [class~='bg-ink-900/80'],
+    [class~='bg-ink-900/60'],
+    [class~='bg-ink-900/50'],
+    [class~='bg-ink-900/40'],
+    [class~='bg-ink-950/40'],
+    [class~='bg-ink-850'],
+    [class~='bg-ink-800/60'],
+    [class~='bg-black/50'],
+    [class~='bg-black/40'],
+    [class~='bg-black/30'],
+    [class~='bg-white/5']
+  ) {
+  background-color: var(--lg-fill);
+  background-image: var(--lg-sheen);
+  -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-sat));
+  backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-sat));
+  border-color: var(--lg-stroke);
+  box-shadow: var(--lg-edge), var(--lg-drop);
+}
+
+/* Rows, chips and the other small fills that live *inside* a pane. Tint and
+   bevel only — see `.lg-inner` for why they must not blur again. */
+:root[data-player-theme='glasspro'] :is(
+    [class~='bg-ink-800/80'],
+    [class~='bg-ink-800/50'],
+    [class~='bg-white/10'],
+    [class~='bg-white/20']
+  ) {
+  background-image: var(--lg-sheen);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+:root[data-player-theme='glasspro'] :is([class~='border-ink-800'], [class~='border-ink-700']) {
+  border-color: var(--lg-stroke);
+}
+
+/* Artwork sits *on* the glass, so it gets the same bright edge the panes have
+   instead of the flat ink ring it wears on the opaque themes. */
+:root[data-player-theme='glasspro'] :is([class~='ring-white/10'], [class~='ring-white/15']) {
+  --tw-ring-color: rgba(255, 255, 255, 0.22);
+}
+
+/* Text inputs and selects are surfaces too — leaving them opaque is the single
+   most obvious tell that a "glass" theme was only skin-deep. */
+:root[data-player-theme='glasspro'] :is(input:not([type='range']), select, textarea) {
+  background-color: var(--lg-fill-soft);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  backdrop-filter: blur(14px) saturate(160%);
+  border-color: var(--lg-stroke-soft);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+/* Cards lift out of the plane rather than just darkening their shadow. */
+:root[data-player-theme='glasspro'] .card-hover:hover {
+  box-shadow: 0 18px 44px -18px rgba(2, 6, 23, 0.9), 0 0 26px -6px rgba(56, 189, 248, 0.28);
+}
+
+:root[data-player-theme='glasspro'] .skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.05) 25%,
+    rgba(255, 255, 255, 0.13) 50%,
+    rgba(255, 255, 255, 0.05) 75%
+  );
+  background-size: 200% 100%;
+}
+
+/* The scrub/volume tracks read as etched channels in the glass. */
+:root[data-player-theme='glasspro'] .seek-bar::-webkit-slider-runnable-track,
+:root[data-player-theme='glasspro'] .vol-bar {
+  background: rgba(255, 255, 255, 0.16);
+  box-shadow: inset 0 1px 2px rgba(2, 6, 23, 0.5);
+}
+
+:root[data-player-theme='glasspro'] .seek-bar::-moz-range-track {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+/* ── Degrading gracefully ─────────────────────────────────────────────────
+   Blur is the expensive part. Each of these keeps the look while cutting the
+   compositor work, or drops the effect entirely where it would hurt. */
+
+/* Phones repaint the whole blurred region on every scroll frame. Half the
+   radius is visually near-identical at phone viewing distance and roughly
+   halves that cost. */
+@media (max-width: 640px) {
+  :root[data-player-theme='glasspro'] {
+    --lg-blur: 14px;
+  }
+  :root[data-player-theme='glasspro'] [data-shell],
+  :root[data-player-theme='glasspro'] .lg-glass-strong {
+    -webkit-backdrop-filter: blur(18px) saturate(180%);
+    backdrop-filter: blur(18px) saturate(180%);
+  }
+  :root[data-player-theme='glasspro'] .lg-aurora::before,
+  :root[data-player-theme='glasspro'] .lg-aurora::after {
+    filter: blur(56px);
+  }
+}
+
+/* Without backdrop-filter (older Firefox, blur disabled for power saving) a
+   7%-white pane over a dark gradient is unreadable. Fall back to opaque. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root[data-player-theme='glasspro'] {
+    --lg-fill: rgba(23, 34, 60, 0.92);
+    --lg-fill-strong: rgba(20, 30, 54, 0.96);
+    --lg-fill-soft: rgba(30, 42, 70, 0.9);
+  }
+}
+
+/* Some people get motion sick or lose text legibility behind translucency.
+   Honour the OS switch: keep the palette, drop the see-through. */
+@media (prefers-reduced-transparency: reduce) {
+  :root[data-player-theme='glasspro'] {
+    --lg-fill: rgba(19, 28, 50, 0.97);
+    --lg-fill-strong: rgba(16, 24, 44, 0.99);
+    --lg-fill-soft: rgba(26, 37, 62, 0.95);
+    --lg-blur: 0px;
+  }
+  :root[data-player-theme='glasspro'] .lg-aurora {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-player-theme='glasspro'] .lg-aurora::before,
+  :root[data-player-theme='glasspro'] .lg-aurora::after {
+    animation: none !important;
   }
 }

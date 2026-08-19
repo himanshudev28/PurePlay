@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import clsx from 'clsx'
 import type { Track } from '@/types'
 import { usePlayer, syncMediaPosition } from '@/store/player'
 import { useLibrary } from '@/store/library'
@@ -89,29 +90,47 @@ export function PlaybackHost() {
 
   const videoActive = usePlayer((s) => s.videoActive)
   const expanded = usePlayer((s) => s.videoExpanded)
+  const docked = usePlayer((s) => s.videoDocked)
+  const fullPlayerOpen = usePlayer((s) => s.fullPlayerOpen)
+  const barVisible = usePlayer((s) => s.playerViewMode === 'bar')
+
+  /*
+    Where the frame sits.
+
+    It is one node that never moves in the DOM — re-parenting an iframe reloads
+    it, which would restart the song — so every placement below is a CSS change
+    on that same element.
+
+      docked  the full player is showing the video: fill the stage, above the
+              overlay. The overlay is z-50 and the frame used to be z-50 too, so
+              it painted underneath — pressing "Video" appeared to do nothing.
+      float   a corner thumbnail while the user is elsewhere in the app, sitting
+              clear of the player bar and the mobile tab bar instead of on top
+              of them, and below the full player rather than punching through it.
+      hidden  no video track loaded.
+
+    YouTube's Terms of Service require the player stay visible during playback,
+    so `hidden` only ever applies when no YouTube track is loaded at all.
+  */
+  const floatOffset = barVisible ? 'bottom-[178px] sm:bottom-[116px]' : 'bottom-[92px] sm:bottom-6'
+  const placement = !videoActive
+    ? 'pointer-events-none fixed h-0 w-0 overflow-hidden opacity-0'
+    : docked && fullPlayerOpen
+      ? 'fixed left-1/2 top-1/2 z-[60] aspect-video w-[min(92vw,780px)] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl border border-white/15 bg-black shadow-2xl'
+      : clsx(
+          'fixed right-3 z-40 aspect-video overflow-hidden border border-ink-700 bg-black shadow-2xl sm:right-4',
+          floatOffset,
+          expanded
+            ? 'w-[min(356px,calc(100vw-1.5rem))] rounded-xl sm:w-[390px]'
+            : 'w-[min(152px,calc(100vw-1.5rem))] rounded-lg',
+        )
 
   return (
     <>
       <audio ref={audioRef} preload="metadata" />
 
-      {/*
-        Always mounted, never unmounted — remounting would destroy the YouTube
-        player. Visibility and size are driven by state instead.
-
-        YouTube's Terms of Service require the player stay visible during
-        playback, so the "hidden" case only applies when no YouTube track is
-        loaded at all.
-      */}
-      <div
-        aria-hidden={!videoActive}
-        className={
-          videoActive
-            ? expanded
-              ? 'fixed right-4 bottom-[104px] z-50 h-[200px] w-[356px] overflow-hidden rounded-xl border border-ink-700 bg-black shadow-2xl sm:h-[220px] sm:w-[390px]'
-              : 'fixed right-4 bottom-[104px] z-50 h-[86px] w-[152px] overflow-hidden rounded-lg border border-ink-700 bg-black shadow-2xl'
-            : 'pointer-events-none fixed h-0 w-0 overflow-hidden opacity-0'
-        }
-      >
+      {/* Always mounted, never unmounted — remounting destroys the player. */}
+      <div aria-hidden={!videoActive} className={placement}>
         <div ref={videoRef} className="h-full w-full" />
       </div>
     </>

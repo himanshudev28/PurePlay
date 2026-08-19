@@ -44,7 +44,7 @@ export const PLAYER_THEMES = [
   {
     id: 'glasspro',
     name: 'Glass Pro',
-    description: 'Premium frosted glass with cinematic backdrop',
+    description: 'Liquid glass throughout, over a drifting aurora backdrop',
     preview: '💎',
     accent: '#38bdf8',
     accentThemeId: 'blue',
@@ -236,26 +236,36 @@ export const THEME_CSS_VARS: Record<PlayerThemeId, ThemeCssVars> = {
     '--shell-color-scheme': 'dark',
   },
   glasspro: {
-    // A cinematic gradient so the frosted-glass panels have colour to blur over
-    // (see the [data-player-theme="glasspro"] rules in index.css).
-    '--shell-bg':
-      'radial-gradient(1200px 600px at 15% -10%, #1e3a8a 0%, transparent 55%), radial-gradient(1000px 700px at 100% 0%, #0e7490 0%, transparent 50%), linear-gradient(160deg, #0a0f1f 0%, #0b1226 55%, #070b16 100%)',
-    '--shell-sidebar-bg': 'rgba(15,23,42,0.45)',
-    '--shell-topbar-bg': 'rgba(15,23,42,0.35)',
-    '--shell-border': 'rgba(255,255,255,0.12)',
-    '--shell-nav-text': 'rgba(203,225,255,0.7)',
-    '--shell-nav-hover-bg': 'rgba(255,255,255,0.10)',
-    '--shell-nav-active': '#38bdf8',
-    // Dark translucent surfaces so panels read as frosted glass over the
-    // gradient while text stays high-contrast (index.css adds the blur).
-    '--color-ink-950': '#080c18',
-    '--color-ink-900': 'rgba(17,26,48,0.55)',
-    '--color-ink-850': 'rgba(22,32,58,0.58)',
-    '--color-ink-800': 'rgba(38,52,82,0.60)',
-    '--color-ink-700': 'rgba(56,74,110,0.60)',
-    '--color-ink-400': '#a5c4e0',
-    '--color-ink-300': '#cbd5e1',
-    '--color-ink-200': '#f8fafc',
+    /*
+      Glass Pro's colour does NOT live here — it lives in the fixed `.lg-aurora`
+      layer Shell renders (see index.css). That layer never scrolls away, so a
+      pane blurs the same living backdrop whether it is at the top of Home or
+      1200px down a search result list; a gradient painted on the scrolling
+      shell would slide out from behind the chrome and leave it blurring flat
+      black. What stays here is the deep base the aurora floats on.
+    */
+    '--shell-bg': '#05070f',
+    // Fallbacks only: [data-shell] in index.css repaints the rail/header/tab
+    // bar as real glass, blur and all.
+    '--shell-sidebar-bg': 'rgba(255,255,255,0.07)',
+    '--shell-topbar-bg': 'rgba(255,255,255,0.07)',
+    '--shell-border': 'rgba(255,255,255,0.16)',
+    '--shell-nav-text': 'rgba(203,225,255,0.72)',
+    '--shell-nav-hover-bg': 'rgba(255,255,255,0.12)',
+    '--shell-nav-active': '#7dd3fc',
+    /*
+      Translucent inks. Every `bg-ink-*` panel in the app therefore starts out
+      see-through, and index.css only has to add the blur, sheen and edge to
+      turn it into glass — no component has to know which theme is active.
+    */
+    '--color-ink-950': '#05070f',
+    '--color-ink-900': 'rgba(255,255,255,0.07)',
+    '--color-ink-850': 'rgba(255,255,255,0.09)',
+    '--color-ink-800': 'rgba(255,255,255,0.12)',
+    '--color-ink-700': 'rgba(255,255,255,0.18)',
+    '--color-ink-400': '#a9c6e4',
+    '--color-ink-300': '#d3e2f2',
+    '--color-ink-200': '#f5f9ff',
     '--shell-color-scheme': 'dark',
   },
   'cherry-blossom': {

@@ -11,6 +11,7 @@ import { offlineUrl } from '@/lib/db'
 export class HtmlAudioEngine implements PlaybackEngine {
   readonly id = 'html-audio'
   readonly needsVideoSurface = false
+  readonly supportsRateTrim = true
 
   private el: HTMLAudioElement
   private cb: EngineCallbacks = noopCallbacks
@@ -87,6 +88,14 @@ export class HtmlAudioEngine implements PlaybackEngine {
   seek(seconds: number) {
     this.el.currentTime = seconds
   }
+  currentTime() {
+    return this.el.currentTime || 0
+  }
+  setRate(rate: number) {
+    // preservesPitch keeps a 3% trim from sounding like a chipmunk
+    this.el.preservesPitch = true
+    this.el.playbackRate = rate
+  }
   setVolume(volume: number) {
     this.el.volume = volume
     this.el.muted = volume === 0
@@ -96,6 +105,8 @@ export class HtmlAudioEngine implements PlaybackEngine {
   }
   teardown() {
     this.seq++
+    // a rate trim belongs to one room session, never to the next track
+    this.el.playbackRate = 1
     this.el.pause()
     this.el.removeAttribute('src')
     this.el.load()

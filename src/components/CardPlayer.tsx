@@ -44,6 +44,8 @@ export function CardPlayer() {
           ? 'bg-gradient-to-b from-[#1a1a2e] to-[#0f0f1e] text-white border-[#e94560]/30'
           : playerTheme === 'emerald-gold'
           ? 'bg-gradient-to-b from-[#0f2d22] to-[#071a12] text-white border-[#f5c542]/30'
+          : playerTheme === 'glasspro'
+          ? 'lg-glass-strong text-white'
           : 'glass text-white border-ink-800'
       )}
     >

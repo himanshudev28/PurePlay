@@ -98,6 +98,9 @@ function loadApi(): Promise<YTNamespace> {
 export class YouTubeEngine implements PlaybackEngine {
   readonly id = 'youtube'
   readonly needsVideoSurface = true
+  // The IFrame API only accepts rates from a fixed menu (0.25, 0.5, 1, …), so
+  // there is no such thing as a 2% trim here — drift is corrected by seeking.
+  readonly supportsRateTrim = false
 
   private player: YTPlayer | null = null
   private cb: EngineCallbacks = noopCallbacks
@@ -106,6 +109,14 @@ export class YouTubeEngine implements PlaybackEngine {
   private pendingId: string | null = null
   private volume = 80
   private muted = false
+  /**
+   * The IFrame API hands back a player object whose methods only exist once it
+   * has finished building itself. Calling playVideo()/getPlayerState() before
+   * that throws a TypeError — which, coming out of a click handler, took the
+   * whole UI down with it. Every call below goes through `safe`, and nothing is
+   * attempted until onReady has fired.
+   */
+  private ready = false
 
   constructor(container: HTMLElement) {
     this.container = container
@@ -113,6 +124,18 @@ export class YouTubeEngine implements PlaybackEngine {
 
   attach(callbacks: EngineCallbacks) {
     this.cb = callbacks
+  }
+
+  /** Run a player call, or do nothing if the frame isn't in a state to take it. */
+  private safe<T>(fn: (p: YTPlayer) => T, fallback: T): T {
+    if (!this.player || !this.ready) return fallback
+    try {
+      return fn(this.player)
+    } catch {
+      // the iframe can be mid-build or mid-teardown; a dropped call is not a
+      // reason to break the caller
+      return fallback
+    }
   }
 
   async load(track: Track) {
@@ -160,6 +183,7 @@ export class YouTubeEngine implements PlaybackEngine {
           events: {
             onReady: () => {
               clearTimeout(timeout)
+              this.ready = true
               resolve()
             },
             onStateChange: (e) => this.onState(e.data, YT),
@@ -175,8 +199,10 @@ export class YouTubeEngine implements PlaybackEngine {
       })
       this.applyVolume()
     } else {
-      this.player.loadVideoById(videoId)
-      this.player.playVideo()
+      this.safe((p) => {
+        p.loadVideoById(videoId)
+        p.playVideo()
+      }, undefined)
     }
 
     this.cb.onLoading(false)
@@ -213,11 +239,8 @@ export class YouTubeEngine implements PlaybackEngine {
     if (this.ticker) return
     this.ticker = window.setInterval(() => {
       if (!this.player) return
-      try {
-        this.cb.onTime(this.player.getCurrentTime(), this.player.getDuration() || 0)
-      } catch {
-        // the iframe can be mid-teardown; a dropped tick is harmless
-      }
+      const time = this.safe((p) => [p.getCurrentTime(), p.getDuration() || 0] as const, null)
+      if (time) this.cb.onTime(time[0], time[1])
     }, 250)
   }
 
@@ -229,24 +252,32 @@ export class YouTubeEngine implements PlaybackEngine {
   }
 
   private applyVolume() {
-    if (!this.player) return
-    this.player.setVolume(Math.round(this.volume))
-    if (this.muted) this.player.mute()
-    else this.player.unMute()
+    this.safe((p) => {
+      p.setVolume(Math.round(this.volume))
+      if (this.muted) p.mute()
+      else p.unMute()
+    }, undefined)
   }
 
   async play() {
-    this.player?.playVideo()
+    this.safe((p) => p.playVideo(), undefined)
   }
   pause() {
-    this.player?.pauseVideo()
+    this.safe((p) => p.pauseVideo(), undefined)
   }
   isPlaying() {
-    // YT.PlayerState.PLAYING === 1
-    return this.player?.getPlayerState() === 1
+    // YT.PlayerState.PLAYING === 1. Must never throw: the store's toggle() asks
+    // the engine what it is really doing before deciding play or pause.
+    return this.safe((p) => p.getPlayerState() === 1, false)
   }
   seek(seconds: number) {
-    this.player?.seekTo(seconds, true)
+    this.safe((p) => p.seekTo(seconds, true), undefined)
+  }
+  currentTime() {
+    return this.safe((p) => p.getCurrentTime() || 0, 0)
+  }
+  setRate() {
+    /* unsupported — see supportsRateTrim */
   }
   setVolume(volume: number) {
     this.volume = volume * 100
@@ -259,6 +290,7 @@ export class YouTubeEngine implements PlaybackEngine {
 
   teardown() {
     this.pendingId = null
+    this.ready = false
     this.stopTicker()
     try {
       this.player?.destroy()

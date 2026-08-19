@@ -29,7 +29,13 @@ export function TrackCard({ track, queue }: { track: Track; queue?: Track[] }) {
         className="relative block w-full rounded-xl"
       >
         <TypeBadge label="Song" icon={Music2} />
-        <Artwork src={track.artwork} alt="" className="aspect-square w-full ring-1 ring-white/10" />
+        <div className="overflow-hidden rounded-xl">
+          <Artwork
+            src={track.artwork}
+            alt=""
+            className="aspect-square w-full ring-1 ring-white/10 transition-transform duration-300 group-hover:scale-105"
+          />
+        </div>
         {/* gradient overlay for depth */}
         <span className="pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
         <span className="absolute right-2 bottom-2 flex h-10 w-10 translate-y-2 items-center justify-center rounded-full bg-accent opacity-0 shadow-lg transition-all duration-200 group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:translate-y-0 group-focus-visible:opacity-100 glow-accent">
@@ -101,8 +107,18 @@ export function CollectionCard({ collection }: { collection: Collection }) {
 }
 
 export function ArtistCard({ artist }: { artist: Artist }) {
+  /*
+    The name rides along in the URL, not just in router state, so it survives a
+    reload and a shared link. ArtistPage needs it as a fallback: several
+    catalog mirrors 404 on artist ids that came out of global search, and
+    without a name to search for, that page had nothing left to render.
+  */
+  const to = artist.id
+    ? `/artist/${encodeURIComponent(artist.id)}?name=${encodeURIComponent(artist.name)}`
+    : `/search?q=${encodeURIComponent(artist.name)}`
+
   return (
-    <Link to={`/artist/${artist.id}`} className="group w-[132px] shrink-0 text-center card-hover">
+    <Link to={to} className="group w-[132px] shrink-0 text-center card-hover">
       <Artwork
         src={artist.avatar}
         alt=""

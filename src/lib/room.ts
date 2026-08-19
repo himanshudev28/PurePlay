@@ -23,6 +23,10 @@ export interface RoomMember {
   id: string
   name: string
   isHost: boolean
+  /** the member's own clock when they joined — display only, never authority */
+  joinedAt: number
+  /** set locally when a member's page went away and may be coming back */
+  away?: boolean
 }
 
 /** Who may drive playback: the host alone, or anyone in the room. */
@@ -30,19 +34,41 @@ export type ControlMode = 'host' | 'everyone'
 
 export type RoomMessage =
   | { type: 'join'; member: RoomMember; at: number }
-  | { type: 'leave'; memberId: string; at: number }
-  | { type: 'members'; members: RoomMember[]; at: number }
+  /**
+   * Periodic presence beacon. It carries the sender's view of leadership so a
+   * member who reloaded — or who joined after the last election — learns who
+   * the host is without anyone having to re-announce.
+   */
+  | { type: 'hello'; member: RoomMember; hostId: string | null; term: number; at: number }
+  /** `transient` marks a reload/tab-hide rather than a deliberate exit */
+  | { type: 'leave'; memberId: string; transient?: boolean; at: number }
   /** playback state — `by` is the member who broadcast it, so it isn't echoed */
-  | { type: 'state'; track: Track | null; position: number; playing: boolean; by: string; at: number }
+  | {
+      type: 'state'
+      track: Track | null
+      position: number
+      playing: boolean
+      by: string
+      hostId: string | null
+      term: number
+      at: number
+    }
   /** a member asking whoever's in control to re-broadcast (sent on join) */
   | { type: 'sync-request'; memberId: string; at: number }
+  /** a member claiming leadership for `term` (see the election notes below) */
+  | { type: 'host'; hostId: string; term: number; at: number }
   /** host announces who's allowed to control playback */
-  | { type: 'control-mode'; mode: ControlMode; at: number }
+  | { type: 'control-mode'; mode: ControlMode; term: number; at: number }
   /** a member changed their display name */
   | { type: 'rename'; memberId: string; name: string; at: number }
   /** host removed a member from the room */
   | { type: 'kick'; memberId: string; at: number }
   | { type: 'chat'; memberId: string; name: string; text: string; at: number }
+  /** the host ended the room for everyone */
+  | { type: 'close'; by: string; at: number }
+  /** clock-sync probe: only the host answers, with `time-res` */
+  | { type: 'time-req'; from: string; t0: number }
+  | { type: 'time-res'; to: string; t0: number; t1: number }
 
 type Handler = (msg: RoomMessage) => void
 
@@ -51,10 +77,34 @@ export interface RoomTransport {
   close(): void
 }
 
-/** If a follower drifts more than this from the host, hard-seek instead of nudging. */
-export const HARD_SEEK_THRESHOLD = 2.0
-/** Below this, ignore — seeking would be more disruptive than the drift. */
-export const DRIFT_DEADZONE = 0.35
+/* ── Sync tuning ────────────────────────────────────────────────────────────
+   Values are deliberately tighter than "safe" defaults: with the clock offset
+   measured (see estimateOffset) the numbers below describe real playback
+   divergence rather than clock skew, so we can afford to care about a tenth of
+   a second instead of two whole seconds. */
+
+/**
+ * Above this much divergence, seek: the rate trim closes roughly 0.06s of gap
+ * per second, so anything larger would take long enough that the room stays
+ * audibly apart while it "corrects". Below it, the trim is the better tool.
+ */
+export const HARD_SEEK_THRESHOLD = 0.75
+/** Below this, do nothing — correcting would be more audible than the drift. */
+export const DRIFT_DEADZONE = 0.12
+/** Fastest/slowest playback trim used to erase small drift inaudibly. */
+export const MAX_RATE_TRIM = 0.06
+/** How often the controller republishes its position. */
+export const HEARTBEAT_MS = 3000
+/** How often every member announces itself. */
+export const PING_MS = 4000
+/** Drop a member we haven't heard from in this long. */
+export const PRESENCE_TTL_MS = 14_000
+/** How long a departed host's seat is held before the room elects a new one. */
+export const HOST_GRACE_MS = 12_000
+/** How long a joiner listens for an existing host before claiming the seat. */
+export const CLAIM_WINDOW_MS = 1500
+/** How often followers re-measure their clock offset against the host. */
+export const TIME_SYNC_MS = 8000
 
 /** Cross-tab transport: works with zero setup, but only on this one device. */
 function broadcastTransport(roomId: string, onMessage: Handler): RoomTransport {
@@ -186,28 +236,193 @@ export function connectRoom(roomId: string, onMessage: Handler): RoomTransport {
     : mqttTransport(roomId, onMessage)
 }
 
-/**
- * Given the host's reported position and when it was reported, work out where
- * a follower *should* be right now, accounting for message latency.
- *
- * `sentAt` is stamped with the *host's* clock, so subtracting our own Date.now()
- * measures latency plus any wall-clock skew between the two machines. Skew of
- * several seconds is normal without NTP discipline, and read as drift it would
- * make a follower hard-seek on every heartbeat. So the raw figure is clamped to
- * a plausible network latency: anything larger is a clock difference, not
- * elapsed playback.
- */
-export const MAX_PLAUSIBLE_LATENCY = 5
+/* ── Clock sync ─────────────────────────────────────────────────────────────
+   Every position we receive is stamped with the *sender's* wall clock, and two
+   phones can disagree by seconds without either being wrong. Measuring that
+   disagreement is what turns "roughly together" into "the same second". */
 
-export function expectedPosition(hostPosition: number, sentAt: number, playing: boolean): number {
+export interface ClockSample {
+  /** round-trip time of the probe, ms — lower samples are more trustworthy */
+  rtt: number
+  /** hostClock - myClock, ms */
+  offset: number
+}
+
+/**
+ * NTP's estimator, minus the ceremony: with `t0` when we asked, `t1` when the
+ * host answered (host clock) and `t2` now, the offset is the difference between
+ * the host's stamp and the midpoint of our own two, and the error is bounded by
+ * half the round trip.
+ */
+export function clockSample(t0: number, t1: number, t2 = Date.now()): ClockSample {
+  return { rtt: t2 - t0, offset: t1 - (t0 + t2) / 2 }
+}
+
+/**
+ * Pick an offset from a set of samples: the one with the lowest round trip.
+ * Averaging is the wrong move — a single slow round trip skews an average,
+ * while the fastest exchange is the one least distorted by queuing.
+ */
+export function bestOffset(samples: ClockSample[]): number {
+  if (!samples.length) return 0
+  return samples.reduce((best, s) => (s.rtt < best.rtt ? s : best)).offset
+}
+
+/** Samples older than this many entries are dropped. */
+export const CLOCK_SAMPLE_WINDOW = 8
+
+/**
+ * Given the controller's reported position and when it was reported, work out
+ * where a follower *should* be right now.
+ *
+ * `offsetMs` is the measured difference between the two clocks (see
+ * clockSample). With it applied, `elapsed` is real transit time; the clamp then
+ * only has to catch pathological cases (a sleeping laptop, a wildly wrong
+ * clock before the first probe lands) rather than routine skew.
+ */
+export const MAX_PLAUSIBLE_LATENCY = 3
+
+export function expectedPosition(
+  hostPosition: number,
+  sentAt: number,
+  playing: boolean,
+  offsetMs = 0,
+): number {
   if (!playing) return hostPosition
-  const elapsed = (Date.now() - sentAt) / 1000
+  const elapsed = (Date.now() + offsetMs - sentAt) / 1000
   const trusted = Math.min(Math.max(0, elapsed), MAX_PLAUSIBLE_LATENCY)
   return hostPosition + trusted
+}
+
+/**
+ * Playback-rate trim for small drift.
+ *
+ * Seeking to fix a fifth of a second is worse than the problem — it clicks, and
+ * on a buffering stream it can stall. Running fractionally fast or slow closes
+ * the same gap silently, which is how broadcast playout has always done it.
+ *
+ * @param delta seconds we are BEHIND the controller (negative = ahead)
+ */
+export function trimRate(delta: number): number {
+  const trim = Math.max(-MAX_RATE_TRIM, Math.min(MAX_RATE_TRIM, delta * 0.35))
+  return 1 + trim
 }
 
 /** Human-friendly room codes — unambiguous characters only. */
 export function generateRoomCode(): string {
   const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
   return Array.from({ length: 6 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join('')
+}
+
+/* ── Identity + session persistence ─────────────────────────────────────────
+   A reload used to mint a brand-new member id, so every refresh looked like a
+   stranger arriving and the person who left never came back. The id below is
+   per-device and survives reloads, which is what makes "the host refreshed"
+   distinguishable from "the host left". */
+
+const IDENTITY_KEY = 'lf:room:identity'
+const SESSION_KEY = 'lf:room:session'
+const NAME_KEY = 'lf:name'
+
+/** Offer to resume a room for this long after the page went away. */
+export const SESSION_TTL_MS = 12 * 60 * 60 * 1000
+
+export interface RoomSession {
+  roomId: string
+  name: string
+  /** who this device believed the host was */
+  hostId: string | null
+  /** the election term that belief came from */
+  term: number
+  wasHost: boolean
+  controlMode: ControlMode
+  /** when the session was last written */
+  at: number
+}
+
+function readStore(key: string): string | null {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null // private mode — the room still works for this session
+  }
+}
+
+function writeStore(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    /* private mode */
+  }
+}
+
+function dropStore(key: string) {
+  try {
+    localStorage.removeItem(key)
+  } catch {
+    /* private mode */
+  }
+}
+
+/**
+ * This tab's member id: minted once, reused across reloads of the same tab.
+ *
+ * Deliberately sessionStorage rather than localStorage. It has to survive a
+ * reload — that is the whole point, and the reason a refresh no longer reads as
+ * a stranger arriving — but it must NOT be shared between two tabs on one
+ * device: they are two listeners, and giving them one identity would make each
+ * treat the other's messages as its own echo and quietly stop syncing.
+ *
+ * A tab that is closed and reopened does get a new id, and that is correct —
+ * that member really did leave. Their room comes back to them through the saved
+ * session and the election term, not through the id.
+ */
+export function stableMemberId(): string {
+  const mint = () =>
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `m_${Math.random().toString(16).slice(2)}${Date.now().toString(16)}`
+  try {
+    const existing = sessionStorage.getItem(IDENTITY_KEY)
+    if (existing) return existing
+    const id = mint()
+    sessionStorage.setItem(IDENTITY_KEY, id)
+    return id
+  } catch {
+    return mint() // private mode: a fresh id per load is the best we can do
+  }
+}
+
+export function savedName(): string {
+  return readStore(NAME_KEY) ?? ''
+}
+
+export function rememberName(name: string) {
+  writeStore(NAME_KEY, name)
+}
+
+export function saveSession(session: RoomSession) {
+  writeStore(SESSION_KEY, JSON.stringify(session))
+}
+
+/** The room this device was last in, if it's recent enough to offer resuming. */
+export function loadSession(): RoomSession | null {
+  const raw = readStore(SESSION_KEY)
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw) as RoomSession
+    if (!parsed?.roomId || typeof parsed.at !== 'number') return null
+    if (Date.now() - parsed.at > SESSION_TTL_MS) {
+      dropStore(SESSION_KEY)
+      return null
+    }
+    return parsed
+  } catch {
+    dropStore(SESSION_KEY)
+    return null
+  }
+}
+
+export function clearSession() {
+  dropStore(SESSION_KEY)
 }

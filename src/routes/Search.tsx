@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Search as SearchIcon, Loader2, TrendingUp, Music, Mic2, Headphones, Guitar } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import type { SearchResults, Track } from '@/types'
@@ -6,9 +6,31 @@ import { source } from '@/services'
 import { ytmusic } from '@/services/ytmusic'
 import { TrackRow } from '@/components/TrackRow'
 import { ArtistCard, CollectionCard } from '@/components/Cards'
-import { SectionHeader, EmptyState, ErrorNote } from '@/components/ui'
+import { SectionHeader, EmptyState, ErrorNote, Button } from '@/components/ui'
+import { rankByQuery } from '@/lib/match'
+import { identityOf } from '@/services/recommendations'
 
 const EMPTY: SearchResults = { tracks: [], artists: [], collections: [] }
+
+/** How many songs each page of results asks for. */
+const PAGE_SIZE = 40
+
+/**
+ * Fold out the same recording appearing twice.
+ *
+ * Catalogs list a song once per album, compilation and re-release it appeared
+ * on, so a search for a popular track can spend its first ten rows on ten
+ * copies of it — which is what made everything else look missing.
+ */
+function dedupe(tracks: Track[]): Track[] {
+  const seen = new Set<string>()
+  return tracks.filter((t) => {
+    const id = identityOf(t)
+    if (seen.has(id)) return false
+    seen.add(id)
+    return true
+  })
+}
 
 /** Quick-search chips shown when the search bar is empty. */
 const QUICK_SEARCHES = [
@@ -29,6 +51,10 @@ export default function Search() {
   const [results, setResults] = useState<SearchResults>(EMPTY)
   const [ytTracks, setYtTracks] = useState<Track[]>([])
   const [loading, setLoading] = useState(false)
+  const [moreLoading, setMoreLoading] = useState(false)
+  /** true once a page comes back short, meaning there is nothing after it */
+  const [exhausted, setExhausted] = useState(false)
+  const page = useRef(0)
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -63,6 +89,8 @@ export default function Search() {
     setResults(EMPTY)
     setYtTracks([])
     setError(null)
+    setExhausted(false)
+    page.current = 0
 
     const controller = new AbortController()
     setLoading(true)
@@ -71,7 +99,7 @@ export default function Search() {
       // (searchTracks) honours a real limit. Pull the full song list from there
       // and keep artists + playlists from the combined search.
       const tracksP = source.searchTracks
-        ? source.searchTracks(q, 40, controller.signal).catch(() => null)
+        ? source.searchTracks(q, PAGE_SIZE, controller.signal, 0).catch(() => null)
         : Promise.resolve(null)
 
       // YouTube Music runs alongside (never rejects) for its larger catalog —
@@ -82,7 +110,9 @@ export default function Search() {
 
       Promise.all([source.search(q, controller.signal), tracksP])
         .then(([r, fullTracks]) => {
-          setResults({ ...r, tracks: fullTracks && fullTracks.length ? fullTracks : r.tracks })
+          const songs = fullTracks && fullTracks.length ? fullTracks : r.tracks
+          setResults({ ...r, tracks: songs })
+          if (!fullTracks || fullTracks.length < PAGE_SIZE) setExhausted(true)
           setError(null)
         })
         .catch((e: Error) => {
@@ -99,6 +129,41 @@ export default function Search() {
     }
   }, [query])
 
+  const loadMore = () => {
+    const q = query.trim()
+    if (!q || !source.searchTracks || moreLoading || exhausted) return
+    setMoreLoading(true)
+    const next = page.current + 1
+    source
+      .searchTracks(q, PAGE_SIZE, undefined, next)
+      .then((more) => {
+        page.current = next
+        if (more.length < PAGE_SIZE) setExhausted(true)
+        setResults((prev) => ({ ...prev, tracks: [...prev.tracks, ...more] }))
+      })
+      .catch(() => setExhausted(true)) // a failed page is the end of the road
+      .finally(() => setMoreLoading(false))
+  }
+
+  /*
+    Rank what came back against what was actually typed.
+
+    Catalog relevance is tuned for its own homepage, not for this query: a
+    search for a song title routinely returned remixes, covers and album
+    versions above the recording itself. Scoring here — exact title, then all
+    query words present, then word overlap, with the catalog's own order as the
+    tie-break — puts the obvious answer first without discarding its ordering
+    where we have nothing better to say.
+  */
+  const songs = useMemo(() => rankByQuery(query, dedupe(results.tracks)), [query, results.tracks])
+
+  // Anything YouTube found that the main catalog already has is noise: it would
+  // play the same recording through a worse engine.
+  const ytExtra = useMemo(() => {
+    const known = new Set(songs.map(identityOf))
+    return rankByQuery(query, dedupe(ytTracks)).filter((t) => !known.has(identityOf(t)))
+  }, [query, ytTracks, songs])
+
   // keep ?q= in sync so searches are shareable / survive reload
   useEffect(() => {
     const t = setTimeout(() => {
@@ -109,8 +174,7 @@ export default function Search() {
 
   // an error already explains itself — "No results" alongside it reads as if the
   // search succeeded and simply found nothing
-  const total =
-    results.tracks.length + results.artists.length + results.collections.length + ytTracks.length
+  const total = songs.length + results.artists.length + results.collections.length + ytExtra.length
   const empty = !loading && !error && query.trim().length > 0 && total === 0
 
   return (
@@ -191,26 +255,35 @@ export default function Search() {
         </section>
       )}
 
-      {results.tracks.length > 0 && (
+      {songs.length > 0 && (
         <section>
           <SectionHeader title="Songs" />
           <div className="space-y-0.5">
-            {results.tracks.map((t, i) => (
-              <TrackRow key={`${t.source}-${t.id}`} track={t} index={i} queue={results.tracks} />
+            {songs.map((t, i) => (
+              <TrackRow key={`${t.source}-${t.id}`} track={t} index={i} queue={songs} />
             ))}
           </div>
+          {!exhausted && (
+            <div className="mt-4 flex justify-center">
+              <Button variant="outline" onClick={loadMore} loading={moreLoading}>
+                {moreLoading ? 'Loading…' : 'Show more songs'}
+              </Button>
+            </div>
+          )}
         </section>
       )}
 
-      {ytTracks.length > 0 && (
+      {ytExtra.length > 0 && (
         <section>
           <SectionHeader title="From YouTube Music" />
           <p className="mb-3 -mt-3 text-xs text-ink-400">
-            A wider catalog — these play in the video player (not in the background).
+            A wider catalog. These play as normal audio whenever the same recording exists in{' '}
+            {source.name} — otherwise they play in the video panel, which mobile browsers pause when
+            you leave the app.
           </p>
           <div className="space-y-0.5">
-            {ytTracks.map((t, i) => (
-              <TrackRow key={`yt-${t.id}`} track={t} index={i} queue={ytTracks} />
+            {ytExtra.map((t, i) => (
+              <TrackRow key={`yt-${t.id}`} track={t} index={i} queue={ytExtra} />
             ))}
           </div>
         </section>

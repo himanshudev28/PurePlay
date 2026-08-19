@@ -10,7 +10,7 @@ import type { Track, Collection } from '@/types'
 import { usePlayer } from '@/store/player'
 import { useLibrary } from '@/store/library'
 import { getSuggestions } from '@/services/recommendations'
-import { Artwork, NowPlayingBars, QueueTailLoader, SeekRange } from './ui'
+import { Artwork, NowPlayingBars, QueueTailLoader, SeekRange, TransportLock, useTransportLocked } from './ui'
 import { keyOf } from '@/lib/db'
 import { usePlayerTheme } from '@/contexts/PlayerThemeContext'
 
@@ -23,8 +23,13 @@ function TransportControls({
   playBg?: string
 }) {
   const s = usePlayer()
+  const locked = useTransportLocked()
+  // Left clickable on purpose: a disabled button explains nothing on a phone,
+  // whereas pressing it raises the toast that says who is driving.
+  const lock = locked ? 'opacity-45' : ''
   return (
     <div className="flex items-center gap-1 sm:gap-2">
+      <TransportLock className="mr-1 hidden sm:flex" />
       <button
         onClick={s.toggleShuffle}
         title="Shuffle"
@@ -36,25 +41,28 @@ function TransportControls({
       </button>
       <button
         onClick={() => void s.prev()}
-        title="Previous"
+        title={locked ? 'The host controls playback' : 'Previous'}
         aria-label="Previous track"
-        className={clsx('rounded-full p-2 transition', btnClass)}
+        aria-disabled={locked}
+        className={clsx('rounded-full p-2 transition', btnClass, lock)}
       >
         <SkipBack size={18} fill="currentColor" />
       </button>
       <button
         onClick={s.toggle}
-        title={s.playing ? 'Pause' : 'Play'}
+        title={locked ? 'The host controls playback' : s.playing ? 'Pause' : 'Play'}
         aria-label={s.playing ? 'Pause' : 'Play'}
-        className={clsx('rounded-full p-2.5 transition hover:scale-105 active:scale-95 shadow-md', playBg)}
+        aria-disabled={locked}
+        className={clsx('rounded-full p-2.5 transition hover:scale-105 active:scale-95 shadow-md', playBg, lock)}
       >
         {s.playing ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" className="ml-0.5" />}
       </button>
       <button
         onClick={() => void s.next()}
-        title="Next"
+        title={locked ? 'The host controls playback' : 'Next'}
         aria-label="Next track"
-        className={clsx('rounded-full p-2 transition', btnClass)}
+        aria-disabled={locked}
+        className={clsx('rounded-full p-2 transition', btnClass, lock)}
       >
         <SkipForward size={18} fill="currentColor" />
       </button>
@@ -202,7 +210,7 @@ export function PlayerBar() {
             <div className="flex flex-1 items-center justify-end gap-1 sm:gap-2">
               <button onClick={() => s.setPlayerViewMode('card')} title="Card view" className="hidden rounded-full p-2 text-stone-500 hover:text-stone-800 sm:block"><LayoutGrid size={17} /></button>
               <button onClick={() => setQueueOpen((v) => !v)} data-queue-toggle title="Queue" className="rounded-full p-2 text-stone-500 hover:text-stone-800"><ListMusic size={17} /></button>
-              <button onClick={s.openFullPlayer} title="Full screen player" className="rounded-full p-2 text-stone-500 hover:text-stone-800"><Maximize2 size={17} /></button>
+              <button onClick={s.openFullPlayer} title="Full screen player" className="hidden rounded-full p-2 text-stone-500 hover:text-stone-800 sm:block"><Maximize2 size={17} /></button>
             </div>
           </div>
           <ErrorBanner />
@@ -250,7 +258,7 @@ export function PlayerBar() {
             <div className="flex flex-1 items-center justify-end gap-1.5">
               <button onClick={() => s.setPlayerViewMode('card')} title="Card view" className="hidden rounded-full p-2 text-purple-200 hover:bg-white/10 hover:text-white sm:block"><LayoutGrid size={17} /></button>
               <button onClick={() => setQueueOpen((v) => !v)} data-queue-toggle title="Queue" className="rounded-full p-2 text-purple-200 hover:bg-white/10 hover:text-white"><ListMusic size={17} /></button>
-              <button onClick={s.openFullPlayer} title="Full screen player" className="rounded-full p-2 text-purple-200 hover:bg-white/10 hover:text-white"><Maximize2 size={17} /></button>
+              <button onClick={s.openFullPlayer} title="Full screen player" className="hidden rounded-full p-2 text-purple-200 hover:bg-white/10 hover:text-white sm:block"><Maximize2 size={17} /></button>
               <VolumeControl textClass="text-purple-200 hover:text-white" />
             </div>
           </div>
@@ -295,7 +303,7 @@ export function PlayerBar() {
 
             <div className="flex flex-1 items-center justify-end gap-1">
               <button onClick={() => setQueueOpen((v) => !v)} data-queue-toggle title="Queue" className="rounded-full p-2 text-gray-400 hover:text-white"><ListMusic size={17} /></button>
-              <button onClick={s.openFullPlayer} title="Full screen player" className="rounded-full p-2 text-gray-400 hover:text-white"><Maximize2 size={17} /></button>
+              <button onClick={s.openFullPlayer} title="Full screen player" className="hidden rounded-full p-2 text-gray-400 hover:text-white sm:block"><Maximize2 size={17} /></button>
               <VolumeControl textClass="text-gray-400 hover:text-white" />
             </div>
           </div>
@@ -347,7 +355,7 @@ export function PlayerBar() {
             <div className="flex flex-1 items-center justify-end gap-1.5">
               <button onClick={() => s.setPlayerViewMode('card')} title="Card view" className="hidden rounded-full p-2 text-rose-200 hover:bg-white/10 hover:text-white sm:block"><LayoutGrid size={17} /></button>
               <button onClick={() => setQueueOpen((v) => !v)} data-queue-toggle title="Queue" className="rounded-full p-2 text-rose-200 hover:bg-white/10 hover:text-white"><ListMusic size={17} /></button>
-              <button onClick={s.openFullPlayer} title="Full screen player" className="rounded-full p-2 text-rose-200 hover:bg-white/10 hover:text-white"><Maximize2 size={17} /></button>
+              <button onClick={s.openFullPlayer} title="Full screen player" className="hidden rounded-full p-2 text-rose-200 hover:bg-white/10 hover:text-white sm:block"><Maximize2 size={17} /></button>
               <VolumeControl textClass="text-rose-200 hover:text-white" />
             </div>
           </div>
@@ -399,7 +407,7 @@ export function PlayerBar() {
             <div className="flex flex-1 items-center justify-end gap-1.5">
               <button onClick={() => s.setPlayerViewMode('card')} title="Card view" className="hidden rounded-full p-2 text-orange-100 hover:bg-white/10 hover:text-white sm:block"><LayoutGrid size={17} /></button>
               <button onClick={() => setQueueOpen((v) => !v)} data-queue-toggle title="Queue" className="rounded-full p-2 text-orange-100 hover:bg-white/10 hover:text-white"><ListMusic size={17} /></button>
-              <button onClick={s.openFullPlayer} title="Full screen player" className="rounded-full p-2 text-orange-100 hover:bg-white/10 hover:text-white"><Maximize2 size={17} /></button>
+              <button onClick={s.openFullPlayer} title="Full screen player" className="hidden rounded-full p-2 text-orange-100 hover:bg-white/10 hover:text-white sm:block"><Maximize2 size={17} /></button>
               <VolumeControl textClass="text-orange-100 hover:text-white" />
             </div>
           </div>
@@ -451,7 +459,7 @@ export function PlayerBar() {
             <div className="flex flex-1 items-center justify-end gap-1.5">
               <button onClick={() => s.setPlayerViewMode('card')} title="Card view" className="hidden rounded-full p-2 text-teal-100 hover:bg-white/10 hover:text-white sm:block"><LayoutGrid size={17} /></button>
               <button onClick={() => setQueueOpen((v) => !v)} data-queue-toggle title="Queue" className="rounded-full p-2 text-teal-100 hover:bg-white/10 hover:text-white"><ListMusic size={17} /></button>
-              <button onClick={s.openFullPlayer} title="Full screen player" className="rounded-full p-2 text-teal-100 hover:bg-white/10 hover:text-white"><Maximize2 size={17} /></button>
+              <button onClick={s.openFullPlayer} title="Full screen player" className="hidden rounded-full p-2 text-teal-100 hover:bg-white/10 hover:text-white sm:block"><Maximize2 size={17} /></button>
               <VolumeControl textClass="text-teal-100 hover:text-white" />
             </div>
           </div>
@@ -503,7 +511,7 @@ export function PlayerBar() {
             <div className="flex flex-1 items-center justify-end gap-1.5">
               <button onClick={() => s.setPlayerViewMode('card')} title="Card view" className="hidden rounded-full p-2 text-indigo-100 hover:bg-white/10 hover:text-white sm:block"><LayoutGrid size={17} /></button>
               <button onClick={() => setQueueOpen((v) => !v)} data-queue-toggle title="Queue" className="rounded-full p-2 text-indigo-100 hover:bg-white/10 hover:text-white"><ListMusic size={17} /></button>
-              <button onClick={s.openFullPlayer} title="Full screen player" className="rounded-full p-2 text-indigo-100 hover:bg-white/10 hover:text-white"><Maximize2 size={17} /></button>
+              <button onClick={s.openFullPlayer} title="Full screen player" className="hidden rounded-full p-2 text-indigo-100 hover:bg-white/10 hover:text-white sm:block"><Maximize2 size={17} /></button>
               <VolumeControl textClass="text-indigo-100 hover:text-white" />
             </div>
           </div>
@@ -514,7 +522,7 @@ export function PlayerBar() {
   }
 
   // ════════════════════════════════════════════════════════════════════════
-  // THEME 6: GLASS PRO — Frosted pill island
+  // THEME 6: GLASS PRO — Liquid-glass island
   // ════════════════════════════════════════════════════════════════════════
   if (playerTheme === 'glasspro') {
     return (
@@ -522,43 +530,54 @@ export function PlayerBar() {
         {queueOpen && <QueuePanel onClose={() => setQueueOpen(false)} />}
         <div
           ref={barRef}
-          className="fixed left-3 right-3 sm:left-6 sm:right-6 bottom-[calc(60px+env(safe-area-inset-bottom,0px))] lg:bottom-4 z-40 mx-auto max-w-5xl overflow-hidden rounded-3xl sm:rounded-full text-white shadow-2xl transition-all duration-300"
+          // lg-glass-strong carries the blur, sheen and bevelled edge (index.css).
+          // The accent halo is the one thing specific to this surface.
+          className="lg-glass-strong fixed left-3 right-3 sm:left-6 sm:right-6 bottom-[calc(60px+env(safe-area-inset-bottom,0px))] lg:bottom-4 z-40 mx-auto max-w-5xl overflow-hidden rounded-3xl text-white transition-all duration-300 sm:rounded-full"
           style={{
-            background: 'rgba(10, 15, 30, 0.82)',
-            backdropFilter: 'blur(24px) saturate(180%)',
-            border: '1px solid rgba(255,255,255,0.12)',
-            boxShadow: '0 15px 35px rgba(0,0,0,0.5), 0 0 20px rgba(56, 189, 248, 0.15)',
+            boxShadow:
+              'inset 0 1px 0 rgba(255,255,255,0.38), inset 0 -1px 0 rgba(255,255,255,0.06), 0 26px 60px -22px rgba(2,6,23,0.95), 0 0 34px -10px rgba(56,189,248,0.35)',
           }}
         >
+          {/* Light catching the top curve of the pill. */}
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 top-0 h-px"
+            style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.6), transparent)' }}
+          />
+
           <div className="group relative h-1.5 cursor-pointer">
-            <span aria-hidden className="absolute inset-0 bg-white/10" />
-            <span aria-hidden className="absolute inset-y-0 left-0" style={{ width: `${pct}%`, background: 'linear-gradient(90deg, #38bdf8, #818cf8)' }} />
+            <span aria-hidden className="absolute inset-0 bg-white/15" />
+            <span
+              aria-hidden
+              className="absolute inset-y-0 left-0"
+              style={{ width: `${pct}%`, background: 'linear-gradient(90deg, #38bdf8, #818cf8)', boxShadow: '0 0 12px rgba(56,189,248,0.7)' }}
+            />
             <SeekRange />
           </div>
 
           <div className="flex items-center gap-3 px-4 py-2 sm:px-6">
             <div className="flex min-w-0 flex-1 items-center gap-3">
-              <button onClick={s.openFullPlayer} className="group flex min-w-0 items-center gap-3 rounded-xl text-left">
-                <span className="relative shrink-0 overflow-hidden rounded-lg" style={{ boxShadow: '0 0 0 1px rgba(255,255,255,0.2)' }}>
-                  <Artwork src={current.artwork} alt="" className="h-11 w-11" rounded="rounded-lg" />
+              <button onClick={s.openFullPlayer} className="group flex min-w-0 items-center gap-3 rounded-xl text-left" aria-label={`Open full player for ${current.title}`}>
+                <span className="relative shrink-0 overflow-hidden rounded-xl" style={{ boxShadow: '0 0 0 1px rgba(255,255,255,0.28), 0 6px 16px -6px rgba(2,6,23,0.9)' }}>
+                  <Artwork src={current.artwork} alt="" className="h-11 w-11" rounded="rounded-xl" />
                 </span>
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-medium text-white group-hover:text-sky-300">{current.title}</span>
-                  <span className="block truncate text-xs text-white/50">{current.artist}</span>
+                  <span className="block truncate text-xs text-white/60">{current.artist}</span>
                 </span>
               </button>
-              <button onClick={() => toggleFavorite(current)} className={clsx('hidden shrink-0 rounded-full p-2 sm:block', fav ? 'text-sky-300' : 'text-white/40')}>
+              <button onClick={() => toggleFavorite(current)} className={clsx('hidden shrink-0 rounded-full p-2 sm:block', fav ? 'text-sky-300' : 'text-white/50')} title={fav ? 'Remove from favorites' : 'Add to favorites'}>
                 <Heart size={16} fill={fav ? 'currentColor' : 'none'} />
               </button>
             </div>
 
-            <TransportControls btnClass="text-white/60 hover:text-white hover:bg-white/10" playBg="bg-sky-400 text-slate-950 font-bold" />
+            <TransportControls btnClass="text-white/70 hover:text-white hover:bg-white/10" playBg="bg-sky-400/90 text-slate-950 font-bold" />
 
             <div className="flex flex-1 items-center justify-end gap-1.5">
-              <button onClick={() => s.setPlayerViewMode('card')} title="Card view" className="hidden rounded-full p-2 text-white/50 hover:bg-white/10 hover:text-white sm:block"><LayoutGrid size={17} /></button>
-              <button onClick={() => setQueueOpen((v) => !v)} data-queue-toggle title="Queue" className="rounded-full p-2 text-white/50 hover:bg-white/10 hover:text-white"><ListMusic size={17} /></button>
-              <button onClick={s.openFullPlayer} title="Full screen player" className="rounded-full p-2 text-white/50 hover:bg-white/10 hover:text-white"><Maximize2 size={17} /></button>
-              <VolumeControl textClass="text-white/50 hover:text-white" />
+              <button onClick={() => s.setPlayerViewMode('card')} title="Card view" className="hidden rounded-full p-2 text-white/60 hover:bg-white/10 hover:text-white sm:block"><LayoutGrid size={17} /></button>
+              <button onClick={() => setQueueOpen((v) => !v)} data-queue-toggle title="Queue" className="rounded-full p-2 text-white/60 hover:bg-white/10 hover:text-white"><ListMusic size={17} /></button>
+              <button onClick={s.openFullPlayer} title="Full screen player" className="hidden rounded-full p-2 text-white/60 hover:bg-white/10 hover:text-white sm:block"><Maximize2 size={17} /></button>
+              <VolumeControl textClass="text-white/60 hover:text-white" />
             </div>
           </div>
           <ErrorBanner />
@@ -626,7 +645,10 @@ export function PlayerBar() {
             <button
               onClick={s.openFullPlayer}
               title="Full screen player"
-              className="rounded-full p-2 text-ink-400 hover:bg-ink-800 hover:text-white"
+              // Hidden on phones: the artwork/title button already opens the
+              // full player, and at 320px this duplicate is what pushes the
+              // row past the bar's width.
+              className="hidden rounded-full p-2 text-ink-400 hover:bg-ink-800 hover:text-white sm:block"
             >
               <Maximize2 size={17} />
             </button>
@@ -682,7 +704,7 @@ function QueuePanel({ onClose }: { onClose: () => void }) {
     <aside
       ref={panelRef}
       aria-label="Play queue"
-      className="fixed right-3 sm:right-6 z-40 flex max-h-[60vh] w-[calc(100vw-24px)] sm:w-96 flex-col rounded-2xl border border-ink-800 glass shadow-2xl"
+      className="fixed right-3 left-3 sm:left-auto sm:right-6 z-40 flex max-h-[min(60dvh,26rem)] w-auto sm:w-96 flex-col rounded-2xl border border-ink-800 glass shadow-2xl"
       style={{ bottom: 'calc(80px + env(safe-area-inset-bottom, 0px))' }}
     >
       <header className="flex items-center justify-between border-b border-ink-800 px-4 py-3">

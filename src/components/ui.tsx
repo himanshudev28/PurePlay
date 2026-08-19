@@ -1,8 +1,38 @@
 import clsx from 'clsx'
 import { useState, useEffect, useRef, type ReactNode } from 'react'
-import { Music, Loader2 } from 'lucide-react'
+import { Music, Loader2, Lock } from 'lucide-react'
 import { usePlayer } from '@/store/player'
+import { useRoom } from '@/store/room'
 import { formatDuration } from '@/lib/format'
+
+/**
+ * True when a room is holding this device's transport controls.
+ *
+ * The store already refuses the action (see setTransportGate), so this is about
+ * saying so *before* the press: a button that silently does nothing reads as a
+ * broken player, not as a room rule.
+ */
+export function useTransportLocked(): boolean {
+  return useRoom((s) => s.roomId !== null && !s.canControl)
+}
+
+/** The badge that explains a locked transport, wherever the controls are. */
+export function TransportLock({ className }: { className?: string }) {
+  const locked = useTransportLocked()
+  if (!locked) return null
+  return (
+    <span
+      title="The host controls playback in this room"
+      className={clsx(
+        'flex items-center gap-1 rounded-full bg-white/10 px-2 py-1 text-[10px] font-medium text-white/70',
+        className,
+      )}
+    >
+      <Lock size={10} />
+      Host
+    </span>
+  )
+}
 
 /**
  * The seek input used by every player surface.
@@ -17,6 +47,7 @@ export function SeekRange({ className }: { className?: string }) {
   const position = usePlayer((s) => s.position)
   const duration = usePlayer((s) => s.duration)
   const seek = usePlayer((s) => s.seek)
+  const locked = useTransportLocked()
   const [drag, setDrag] = useState<number | null>(null)
   const dragging = useRef(false)
 
@@ -47,9 +78,12 @@ export function SeekRange({ className }: { className?: string }) {
         else seek(v)
       }}
       aria-label="Seek"
+      disabled={locked}
+      title={locked ? 'The host controls playback in this room' : undefined}
       aria-valuetext={`${formatDuration(value)} of ${formatDuration(duration)}`}
       className={clsx(
-        'seek-bar absolute inset-0 h-full w-full cursor-pointer opacity-0 group-hover:opacity-100',
+        'seek-bar absolute inset-0 h-full w-full opacity-0 group-hover:opacity-100',
+        locked ? 'cursor-not-allowed' : 'cursor-pointer',
         className,
       )}
     />

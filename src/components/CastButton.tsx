@@ -41,7 +41,8 @@ export function CastButton({
   variant = 'icon',
   className,
 }: {
-  variant?: 'icon' | 'labeled'
+  /** icon = bare round button · labeled = icon+word · menu = a dropdown row */
+  variant?: 'icon' | 'labeled' | 'menu'
   className?: string
 }) {
   const [status, setStatus] = useState<Status>('idle')
@@ -157,28 +158,39 @@ export function CastButton({
         title={label}
         aria-label={label}
         aria-pressed={status === 'connected'}
+        role={variant === 'menu' ? 'menuitem' : undefined}
         className={clsx(
           'transition disabled:opacity-60',
-          variant === 'labeled'
-            ? 'flex items-center gap-2 text-xs font-semibold'
-            : 'rounded-full p-2',
+          variant === 'menu'
+            ? 'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium hover:bg-white/10'
+            : variant === 'labeled'
+              ? 'flex items-center gap-2 text-xs font-semibold'
+              : 'rounded-full p-2',
           status === 'connected'
-            ? variant === 'labeled'
-              ? 'text-accent'
-              : 'bg-accent/20 text-accent'
-            : 'text-white/70 hover:text-white' + (variant === 'icon' ? ' hover:bg-white/10' : ''),
+            ? variant === 'icon'
+              ? 'bg-accent/20 text-accent'
+              : 'text-accent'
+            : 'text-white/80 hover:text-white' + (variant === 'icon' ? ' hover:bg-white/10' : ''),
           className,
         )}
       >
-        <Icon size={variant === 'labeled' ? 17 : 19} className={spin} />
+        <Icon size={variant === 'icon' ? 19 : 17} className={spin} />
         {variant === 'labeled' && 'Cast'}
+        {variant === 'menu' && (status === 'connected' ? 'Casting — change device' : 'Cast to device')}
       </button>
 
       {/* Shown and announced when a cast attempt finds nothing to connect to. */}
       {status === 'none-found' && (
         <span
           role="status"
-          className="absolute bottom-full left-1/2 z-50 mb-2 w-56 -translate-x-1/2 rounded-lg border border-ink-700 bg-ink-850 px-3 py-2 text-center text-xs text-ink-200 shadow-xl"
+          className={clsx(
+            'absolute z-50 w-56 rounded-lg border border-ink-700 bg-ink-850 px-3 py-2 text-center text-xs text-ink-200 shadow-xl',
+            // Inside a dropdown there is nothing above to grow into, so the
+            // notice drops below the row instead of off the top of the menu.
+            variant === 'menu'
+              ? 'top-full right-0 mt-1'
+              : 'bottom-full left-1/2 mb-2 -translate-x-1/2',
+          )}
         >
           {noticeText}
         </span>

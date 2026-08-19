@@ -52,12 +52,21 @@ export function Shell({ children }: { children: ReactNode }) {
 
   return (
     <div
+      data-app-root
       className="min-h-screen transition-colors duration-300"
       style={{ background: 'var(--shell-bg, #070708)' }}
     >
+      {/*
+        The backdrop Glass Pro's panes refract. Fixed, so it stays put while the
+        page scrolls and every pane blurs the same living colour. Inert on every
+        other theme — index.css leaves it `display: none`.
+      */}
+      <div aria-hidden className="lg-aurora" />
+
       {/* desktop rail */}
       <nav
         aria-label="Main"
+        data-shell="rail"
         className="fixed inset-y-0 left-0 z-30 hidden w-[76px] flex-col items-center gap-1 py-5 lg:flex transition-colors duration-300"
         style={{
           background: 'var(--shell-sidebar-bg, #0c0c0e)',
@@ -90,6 +99,7 @@ export function Shell({ children }: { children: ReactNode }) {
 
       {/* top bar */}
       <header
+        data-shell="topbar"
         className="sticky top-0 z-20 flex items-center gap-3 px-4 py-3 lg:pl-[92px] backdrop-blur-xl transition-colors duration-300"
         style={{
           background: 'var(--shell-topbar-bg, rgba(12,12,14,0.75))',
@@ -144,7 +154,8 @@ export function Shell({ children }: { children: ReactNode }) {
             aria-modal="true"
             aria-label="Navigation"
             tabIndex={-1}
-            className="absolute inset-y-0 left-0 w-64 p-4 outline-none transition-colors duration-300"
+            data-shell="drawer"
+            className="absolute inset-y-0 left-0 w-[min(16rem,80vw)] p-4 outline-none transition-colors duration-300"
             style={{
               background: 'var(--shell-sidebar-bg, #0c0c0e)',
               borderRight: '1px solid var(--shell-border, #17171b)',
@@ -201,6 +212,7 @@ export function Shell({ children }: { children: ReactNode }) {
       {/* mobile bottom tab bar */}
       <nav
         aria-label="Primary"
+        data-shell="tabbar"
         className="fixed inset-x-0 bottom-0 z-40 flex items-center justify-around lg:hidden backdrop-blur-2xl transition-colors duration-300"
         style={{
           paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 0.25rem)',

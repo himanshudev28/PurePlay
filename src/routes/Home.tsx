@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Play, Sparkles, Flame, Music, Heart, Headphones, Radio, ListMusic, Shuffle } from 'lucide-react'
+import { Play, Sparkles, Flame, Music, Heart, Headphones, Radio, ListMusic, Shuffle, RefreshCw, CalendarClock } from 'lucide-react'
 import clsx from 'clsx'
 import type { Track, Collection, Artist } from '@/types'
 import { source } from '@/services'
@@ -9,6 +9,8 @@ import { useLibrary } from '@/store/library'
 import { TrackCard, CollectionCard, ArtistCard } from '@/components/Cards'
 import { TrackRow } from '@/components/TrackRow'
 import { SectionHeader, Skeleton, Button, ErrorNote, Artwork } from '@/components/ui'
+import { getFreshPicks } from '@/services/recommendations'
+import { readDaily, writeDaily, clearDaily } from '@/lib/daily'
 
 const CATEGORIES = [
   { label: '🔥 Bollywood Hits', query: 'Bollywood Hits', icon: Flame },
@@ -54,9 +56,20 @@ function greeting(): string {
   return 'Good night'
 }
 
-/** Lead artist of "A, B & C feat. D" → "A", for seeding a taste shelf. */
-function leadArtist(name: string): string {
-  return name.split(/,|&|\bfeat\.?\b|\bft\.?\b|\bwith\b/i)[0]?.trim() ?? ''
+/**
+ * A counter that advances once per visit, used to rotate the "Fresh for you"
+ * shelf. Persisted rather than random so consecutive visits are guaranteed to
+ * differ — a random seed can repeat itself, and "I already saw these" is the
+ * exact complaint a discovery row has to avoid.
+ */
+function nextRotation(): number {
+  try {
+    const n = (Number(localStorage.getItem('lf:picks-rotation')) || 0) + 1
+    localStorage.setItem('lf:picks-rotation', String(n))
+    return n
+  } catch {
+    return 0
+  }
 }
 
 /**
@@ -79,7 +92,9 @@ async function discoverTracks(query: string, limit: number): Promise<Track[]> {
 export default function Home() {
   const [trending, setTrending] = useState<Track[]>([])
   const [collections, setCollections] = useState<Collection[]>([])
-  const [forYou, setForYou] = useState<Track[]>([])
+  const [picks, setPicks] = useState<Track[]>([])
+  const [picksLoading, setPicksLoading] = useState(true)
+  const [rotation, setRotation] = useState(nextRotation)
   const [artists, setArtists] = useState<Artist[]>([])
   const [playlistShelves, setPlaylistShelves] = useState<Shelf<Collection>[]>([])
   const [songShelves, setSongShelves] = useState<Shelf<Track>[]>([])
@@ -99,11 +114,6 @@ export default function Home() {
   const playlists = useLibrary((s) => s.playlists)
 
   const [hello] = useState(greeting)
-
-  const tasteArtist = useMemo(() => {
-    const seed = favorites[0] || recent[0]
-    return seed ? leadArtist(seed.artist) || null : null
-  }, [favorites, recent])
 
   const loadCategory = useCallback((catQuery: string) => {
     const token = ++loadSeq.current
@@ -127,11 +137,33 @@ export default function Home() {
       })
   }, [])
 
-  const loadTrending = useCallback(() => {
+  /**
+   * The trending feed, cached for the calendar day.
+   *
+   * The catalog rotates its own category seeds daily (see `trending()` in the
+   * JioSaavn adapter); this caches the result so the shelf is identical all day
+   * — reload, back-navigation and a second tab all agree — and only turns over
+   * at midnight. `force` skips the cache for the explicit refresh button.
+   */
+  const loadTrending = useCallback((force = false) => {
     const token = ++loadSeq.current
-    setLoading(true)
-    setError(null)
     setActiveCategory(null)
+    setError(null)
+
+    if (force) clearDaily('trending')
+    const cached = force ? null : readDaily<Track[]>('trending')
+    if (cached?.length) {
+      setTrending(cached)
+      setLoading(false)
+      // Collections aren't part of the daily contract, so they still refresh.
+      void source.featuredCollections(12).then(
+        (c) => token === loadSeq.current && c.length && setCollections(c),
+        () => {},
+      )
+      return
+    }
+
+    setLoading(true)
     // trending() can fail hard when the JioSaavn mirrors are down; fall back to
     // YouTube Music so the home still fills instead of showing a bare error.
     Promise.all([
@@ -142,6 +174,7 @@ export default function Home() {
         if (token !== loadSeq.current) return
         setTrending(t)
         setCollections(c)
+        if (t.length) writeDaily('trending', t)
         setError(t.length ? null : 'Could not load the catalog')
       })
       .catch((e: Error) => {
@@ -199,20 +232,22 @@ export default function Home() {
     }
   }, [])
 
-  // Taste shelf — refreshed whenever the top favorite/recent artist changes.
+  /*
+    Fresh picks. Deliberately keyed on `rotation` and not on the library: a
+    shelf that re-ran on every favourite toggle would reshuffle itself under the
+    user's cursor mid-browse. It advances when they arrive, or when they ask.
+  */
   useEffect(() => {
-    if (!tasteArtist) {
-      setForYou([])
-      return
-    }
     let active = true
-    void discoverTracks(tasteArtist, 12).then((tracks) => {
-      if (active) setForYou(tracks.slice(0, 12))
-    })
+    setPicksLoading(true)
+    void getFreshPicks(12, rotation)
+      .then((tracks) => active && setPicks(tracks))
+      .catch(() => active && setPicks([]))
+      .finally(() => active && setPicksLoading(false))
     return () => {
       active = false
     }
-  }, [tasteArtist])
+  }, [rotation])
 
   const hero = trending[0]
   // one stable slice — computing it inline created a fresh queue array per row,
@@ -220,7 +255,7 @@ export default function Home() {
   const moreSongs = useMemo(() => trending.slice(20, 40), [trending])
 
   return (
-    <div className="relative -mx-4 -my-6 space-y-10 overflow-hidden bg-[var(--shell-bg,#070708)] text-[var(--color-ink-200,#c6c6d2)] transition-colors duration-300 px-4 py-6 sm:-mx-6 sm:px-6">
+    <div data-page-surface className="relative -mx-4 -my-6 space-y-10 overflow-hidden bg-[var(--shell-bg,#070708)] text-[var(--color-ink-200,#c6c6d2)] transition-colors duration-300 px-4 py-6 sm:-mx-6 sm:px-6">
       <div aria-hidden className="pointer-events-none absolute -top-20 -left-20 h-[420px] w-[420px] rounded-full bg-accent/20 blur-[140px]" />
       <div aria-hidden className="pointer-events-none absolute top-1/3 -right-20 h-[420px] w-[420px] rounded-full bg-accent/15 blur-[150px]" />
 
@@ -338,24 +373,56 @@ export default function Home() {
         </section>
       )}
 
-      {/* Top picks — taste-based */}
-      {forYou.length > 0 && (
-        <section>
-          <SectionHeader
-            title="Top picks for you"
-            action={
-              <Button size="sm" variant="ghost" onClick={() => void playQueue(forYou, 0)}>
-                Play all
-              </Button>
-            }
-          />
-          <div className="shelf">
-            {forYou.map((t) => (
-              <TrackCard key={`foryou-${t.source}-${t.id}`} track={t} queue={forYou} />
-            ))}
+      {/* Fresh for you — a new hand of suggestions every visit */}
+      <section>
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="font-display text-xl font-semibold tracking-tight text-white">
+              Fresh for you
+            </h2>
+            <p className="mt-0.5 text-xs text-ink-400">
+              {favorites.length || recent.length
+                ? 'Matched to what you’ve been playing — and never something you just heard.'
+                : 'Play or favourite a few songs and this shelf starts learning your taste.'}
+            </p>
           </div>
-        </section>
-      )}
+          <div className="flex items-center gap-1.5">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setRotation((n) => n + 1)}
+              loading={picksLoading}
+              title="Deal a new set of suggestions"
+            >
+              <RefreshCw size={14} />
+              Refresh
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => void playQueue(picks, 0)}
+              disabled={!picks.length}
+            >
+              Play all
+            </Button>
+          </div>
+        </div>
+        <div className="shelf">
+          {picksLoading && !picks.length ? (
+            Array.from({ length: 8 }, (_, i) => (
+              <Skeleton key={i} className="h-[212px] w-[152px] shrink-0 sm:w-[168px]" />
+            ))
+          ) : picks.length ? (
+            picks.map((t) => (
+              <TrackCard key={`picks-${t.source}-${t.id}`} track={t} queue={picks} />
+            ))
+          ) : (
+            <p className="py-6 text-sm text-ink-400">
+              Nothing new to suggest right now — try Refresh in a moment.
+            </p>
+          )}
+        </div>
+      </section>
 
       {/* Popular artists */}
       {artists.length > 0 && (
@@ -374,9 +441,30 @@ export default function Home() {
         <SectionHeader
           title={activeCategory || 'Trending hits'}
           action={
-            <Button size="sm" variant="ghost" onClick={() => void playQueue(trending, 0)} disabled={!trending.length}>
-              Play all
-            </Button>
+            <div className="flex items-center gap-1.5">
+              {!activeCategory && (
+                <span
+                  title="A new selection is picked every day"
+                  className="hidden items-center gap-1.5 rounded-full border border-ink-800 px-2.5 py-1 text-[11px] font-medium text-ink-400 sm:inline-flex"
+                >
+                  <CalendarClock size={11} aria-hidden />
+                  Updated daily
+                </span>
+              )}
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => (activeCategory ? loadCategory(activeCategory) : loadTrending(true))}
+                loading={loading}
+                title="Fetch the latest"
+                ariaLabel="Refresh trending"
+              >
+                <RefreshCw size={14} />
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => void playQueue(trending, 0)} disabled={!trending.length}>
+                Play all
+              </Button>
+            </div>
           }
         />
         <div className="shelf">

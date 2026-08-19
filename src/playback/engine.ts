@@ -20,6 +20,13 @@ export interface PlaybackEngine {
    */
   readonly needsVideoSurface: boolean
 
+  /**
+   * True when this backend can play at a fractional rate. Room sync uses tiny
+   * rate trims to erase drift inaudibly; YouTube's IFrame API only accepts a
+   * fixed menu of rates, so it falls back to seeking.
+   */
+  readonly supportsRateTrim: boolean
+
   attach(callbacks: EngineCallbacks): void
   /** Resolve whatever this backend needs and begin playing `track`. */
   load(track: Track): Promise<void>
@@ -29,6 +36,14 @@ export interface PlaybackEngine {
    *  can't trust the store flag if a media event was missed. */
   isPlaying(): boolean
   seek(seconds: number): void
+  /**
+   * The engine's live playhead. `position` in the store is only as fresh as the
+   * last timeupdate (up to 250ms stale), which is a quarter of a second of
+   * error baked into every position we publish to a room.
+   */
+  currentTime(): number
+  /** Fractional playback rate (1 = normal). No-op where unsupported. */
+  setRate(rate: number): void
   setVolume(volume: number): void
   setMuted(muted: boolean): void
   /** Release the backend — called when switching to a different engine. */

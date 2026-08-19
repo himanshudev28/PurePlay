@@ -3,6 +3,7 @@ import { SourceError } from './source'
 import type { Track, Artist, Collection, SearchResults } from '@/types'
 import { getQuality, type Quality } from '@/lib/prefs'
 import { withTimeout } from '@/lib/net'
+import { dayKey, seededPick } from '@/lib/daily'
 
 /*
   API mirrors, tried in order. Set VITE_JIOSAAVN_API in .env to put your own
@@ -186,11 +187,21 @@ interface RawSong {
 
 interface RawArtist {
   id: string
-  name: string
+  /*
+    Two spellings for one field. The dedicated /search/artists and /artists/{id}
+    endpoints return `name`; the combined /search endpoint returns the very same
+    artist as `title`. Reading only `name` left every artist that arrived via
+    global search with a blank heading on their page.
+  */
+  name?: string
+  title?: string
   image?: RawImage[]
+  url?: string
   followerCount?: number
-  bio?: string
+  fanCount?: number | string
+  bio?: string | { text?: string }[]
   topSongs?: RawSong[]
+  songs?: RawSong[]
 }
 
 interface RawAlbum {
@@ -266,12 +277,22 @@ const toTrack = (s: RawSong): Track => ({
   source: 'jiosaavn',
 })
 
+/** Some mirrors return the bio as an array of paragraph objects. */
+const getBio = (bio: RawArtist['bio']): string | undefined => {
+  if (typeof bio === 'string') return bio || undefined
+  if (Array.isArray(bio)) return bio.map((b) => b?.text).filter(Boolean).join('\n\n') || undefined
+  return undefined
+}
+
 const toArtist = (a: RawArtist): Artist => ({
-  id: a.id,
-  name: a.name,
+  // `id` is missing from a few mirrors' global-search rows, which link by URL
+  // slug instead. The slug's last segment is the artist token the /artists
+  // endpoint accepts, so recover it rather than producing an unclickable card.
+  id: a.id || a.url?.split('/').filter(Boolean).pop() || '',
+  name: a.name || a.title || 'Unknown Artist',
   avatar: getBestImage(a.image),
-  followers: a.followerCount,
-  bio: a.bio,
+  followers: Number(a.followerCount ?? a.fanCount) || undefined,
+  bio: getBio(a.bio),
   source: 'jiosaavn',
 })
 
@@ -286,13 +307,31 @@ const toCollection = (c: RawAlbum, kind: 'album' | 'playlist' = 'album'): Collec
   source: 'jiosaavn',
 })
 
+/** Trending draws five of these per day — wide enough that the shelf genuinely
+ *  turns over, all mainstream enough that any five make a coherent feed. */
+const TRENDING_POOL = [
+  'Bollywood Hits', 'Punjabi Hits', 'Hindi Trending', 'English Hits', 'Pop Hits',
+  'Top 50 Hindi', 'Hindi Romance', 'Party Anthems', 'Indie India', 'Sufi Hits',
+  'Tamil Hits', 'Telugu Hits', 'Bhojpuri Hits', 'Hindi Lofi', 'Retro Bollywood',
+  'Workout Hits', 'Late Night Drive', 'Trending Global',
+]
+
 export const jiosaavnSource: MusicSource = {
   id: 'jiosaavn',
   name: 'JioSaavn (Bollywood & Global)',
   downloadable: true,
 
   async trending(limit = 40): Promise<Track[]> {
-    const categories = ['Bollywood Hits', 'Punjabi Hits', 'Hindi Trending', 'English Hits', 'Pop Hits']
+    /*
+      Five categories out of a pool of eighteen, chosen by today's date.
+
+      Seeding the pick with the calendar day rather than Math.random is what
+      makes this a *daily* refresh instead of a slot machine: every request
+      today deals the same five categories — so reloading, navigating back, and
+      a second device all show the same Trending shelf — and tomorrow deals five
+      different ones without anyone having to invalidate anything.
+    */
+    const categories = seededPick(TRENDING_POOL, 5, `trending-${dayKey()}`)
 
     // These five requests are independent. Running them in sequence made the
     // very first paint of the app wait on five round-trips stacked end to end.
@@ -369,9 +408,9 @@ export const jiosaavnSource: MusicSource = {
    * many match (4,491 for "Arijit Singh"). /search/songs honours `limit`, so
    * anything that needs a real list of tracks has to come through here.
    */
-  async searchTracks(query: string, limit = 30, signal?: AbortSignal): Promise<Track[]> {
+  async searchTracks(query: string, limit = 30, signal?: AbortSignal, page = 0): Promise<Track[]> {
     const res = await apiFetch(
-      `${API_BASE}/search/songs?query=${encodeURIComponent(query.trim())}&limit=${limit}`,
+      `${API_BASE}/search/songs?query=${encodeURIComponent(query.trim())}&limit=${limit}&page=${page}`,
       { signal },
     )
     if (!res.ok) throw new SourceError(`Song search failed for "${query}"`)
@@ -415,18 +454,52 @@ export const jiosaavnSource: MusicSource = {
     }
   },
 
+  /**
+   * An artist page, assembled from whatever the mirror is willing to give.
+   *
+   * `/artists/{id}` is the happy path, but across mirrors it variously: 404s
+   * for ids that came from global search, returns the artist with an empty
+   * `topSongs`, or nests the songs under `songs` instead. Any one of those used
+   * to leave the page with nothing to render. So each step degrades into the
+   * next, and the last resort — searching the catalog for the artist's name —
+   * works even when the artist endpoint is unreachable entirely.
+   */
   async artist(id: string): Promise<{ artist: Artist; tracks: Track[] } | null> {
+    let data: RawArtist | undefined
     try {
       const res = await apiFetch(`${API_BASE}/artists/${id}`)
-      if (!res.ok) return null
-      const json = await res.json()
-      const data = json.data as RawArtist | undefined
-      if (!data) return null
-      const tracks = (data.topSongs || []).map(toTrack)
-      return { artist: toArtist(data), tracks }
+      if (res.ok) data = ((await res.json()).data ?? undefined) as RawArtist | undefined
     } catch {
-      return null
+      // fall through to the song-search fallback below
     }
+
+    const artist = data ? toArtist({ ...data, id: data.id || id }) : null
+    let tracks = (data?.topSongs || data?.songs || []).map(toTrack)
+
+    // Songs live behind a second call on some mirrors.
+    if (artist && !tracks.length) {
+      try {
+        const res = await apiFetch(`${API_BASE}/artists/${id}/songs`)
+        if (res.ok) {
+          const json = await res.json()
+          tracks = ((json.data?.songs || json.data?.results || json.data || []) as RawSong[]).map(toTrack)
+        }
+      } catch {
+        // still fine — the name search below is the real backstop
+      }
+    }
+
+    if (!artist) return null
+
+    if (!tracks.length && artist.name && artist.name !== 'Unknown Artist') {
+      try {
+        tracks = await jiosaavnSource.searchTracks!(artist.name, 30)
+      } catch {
+        // leave tracks empty; the page renders the artist with an empty state
+      }
+    }
+
+    return { artist, tracks }
   },
 
   async collection(id: string): Promise<{ collection: Collection; tracks: Track[] } | null> {

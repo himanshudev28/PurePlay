@@ -21,14 +21,18 @@ export interface MusicSource {
    */
   search(query: string, signal?: AbortSignal): Promise<SearchResults>
   /**
-   * Songs only, honouring `limit`.
+   * Songs only, honouring `limit` and (where the backend supports it) `page`.
    *
    * Distinct from `search()` on purpose: JioSaavn's combined endpoint caps each
    * section at 3 results, which is fine for a preview row but useless for
    * building a radio queue. Adapters without a songs-only endpoint can fall
    * back to `search()`.
+   *
+   * `page` is 0-based. Without it the Search page could only ever show the
+   * first slice of matches, which is why songs a query clearly matched were
+   * nowhere to be found.
    */
-  searchTracks?(query: string, limit?: number, signal?: AbortSignal): Promise<Track[]>
+  searchTracks?(query: string, limit?: number, signal?: AbortSignal, page?: number): Promise<Track[]>
   /** Curated playlists for a genre/mood term — powers the discovery shelves. */
   searchPlaylists?(query: string, limit?: number, signal?: AbortSignal): Promise<Collection[]>
   /** Artists matching a term, with avatars — powers the "Popular artists" row. */

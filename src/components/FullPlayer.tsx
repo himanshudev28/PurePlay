@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   ChevronDown, Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1,
   Heart, Share2, Music2, Video, FileText, Check, ListMusic,
-  Download, Sparkles, Info, Loader2, Maximize2, Flower2, Sun,
+  Download, Sparkles, Info, Loader2, Maximize2, Flower2, Sun, MoreVertical, Trash2,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { usePlayer } from '@/store/player'
@@ -12,7 +12,7 @@ import { fetchLyrics, type LyricsData } from '@/services/lyrics'
 import { extractColorFromImage } from '@/lib/colorExtractor'
 import { copyText } from '@/lib/clipboard'
 import { formatDuration } from '@/lib/format'
-import { Artwork, NowPlayingBars, QueueTailLoader, SeekRange } from './ui'
+import { Artwork, NowPlayingBars, QueueTailLoader, SeekRange, TransportLock, useTransportLocked } from './ui'
 import { CastButton } from './CastButton'
 import { keyOf } from '@/lib/db'
 import { usePlayerTheme } from '@/contexts/PlayerThemeContext'
@@ -24,6 +24,7 @@ const prefersReducedMotion = () =>
 
 export function FullPlayer() {
   const s = usePlayer()
+  const transportLocked = useTransportLocked()
   const isFavorite = useLibrary((l) => l.isFavorite)
   const toggleFavorite = useLibrary((l) => l.toggleFavorite)
   const { playerTheme } = usePlayerTheme()
@@ -35,12 +36,22 @@ export function FullPlayer() {
   const [shareState, setShareState] = useState<'idle' | 'copied' | 'failed'>('idle')
   const [mode, setMode] = useState<'song' | 'video'>('song')
   const [bgGradient, setBgGradient] = useState(INITIAL_BACKDROP)
+  const [menuOpen, setMenuOpen] = useState(false)
 
   const lyricsContainerRef = useRef<HTMLDivElement>(null)
   const activeLineRef = useRef<HTMLElement | null>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
   const queueListRef = useRef<HTMLUListElement>(null)
   const restoreFocusTo = useRef<Element | null>(null)
+  const moreMenuRef = useRef<HTMLDivElement>(null)
+  /*
+    Read by the dialog's Escape handler, which is registered once when the
+    player opens. A plain `menuOpen` dependency there would tear down and
+    re-register the listener on every menu toggle; the ref lets one stable
+    handler ask "is the menu up?" at the moment the key is pressed.
+  */
+  const menuOpenRef = useRef(false)
+  menuOpenRef.current = menuOpen
 
   const current = s.current
   const open = s.fullPlayerOpen && !!current
@@ -109,10 +120,12 @@ export function FullPlayer() {
     document.body.style.overflow = 'hidden'
 
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation()
-        closeFullPlayer()
-      }
+      if (e.key !== 'Escape') return
+      e.stopPropagation()
+      // Escape dismisses one layer at a time: the menu first, the player only
+      // once nothing is open on top of it.
+      if (menuOpenRef.current) setMenuOpen(false)
+      else closeFullPlayer()
     }
     document.addEventListener('keydown', onKey)
     dialogRef.current?.focus()
@@ -123,6 +136,22 @@ export function FullPlayer() {
       if (restoreFocusTo.current instanceof HTMLElement) restoreFocusTo.current.focus()
     }
   }, [open, closeFullPlayer])
+
+  // Dismiss the actions menu on an outside press, and whenever the context it
+  // was opened against changes out from under it.
+  useEffect(() => {
+    if (!menuOpen) return
+    const onPointer = (e: PointerEvent) => {
+      if (!moreMenuRef.current?.contains(e.target as Node)) setMenuOpen(false)
+    }
+    const id = setTimeout(() => document.addEventListener('pointerdown', onPointer))
+    return () => {
+      clearTimeout(id)
+      document.removeEventListener('pointerdown', onPointer)
+    }
+  }, [menuOpen])
+
+  useEffect(() => setMenuOpen(false), [current?.id, open])
 
   const handleShare = useCallback(async () => {
     if (!current) return
@@ -161,6 +190,18 @@ export function FullPlayer() {
     if (!videoActive) setMode('song')
   }, [videoActive])
 
+  /*
+    Drive the shared video frame (it lives in PlaybackHost and can't be moved
+    here without reloading it). Undocking on close matters as much as docking:
+    otherwise the frame stays parked over the middle of the page after the full
+    player is dismissed.
+  */
+  const setVideoDocked = s.setVideoDocked
+  useEffect(() => {
+    setVideoDocked(open && mode === 'video' && videoActive)
+    return () => setVideoDocked(false)
+  }, [open, mode, videoActive, setVideoDocked])
+
   if (!open || !current) return null
 
   const fav = isFavorite(current)
@@ -195,7 +236,8 @@ export function FullPlayer() {
   )
 
   const Transport = ({ size = 'md' }: { size?: 'sm' | 'md' }) => (
-    <div className={clsx('flex w-full items-center justify-center', size === 'md' ? 'gap-6 px-4 pt-1' : 'gap-4')}>
+    <div className={clsx('relative flex w-full items-center justify-center', size === 'md' ? 'gap-6 px-4 pt-1' : 'gap-4')}>
+      <TransportLock className="absolute top-0 right-2" />
       <button
         onClick={s.toggleShuffle}
         aria-pressed={s.shuffle}
@@ -206,22 +248,22 @@ export function FullPlayer() {
       </button>
       <button
         onClick={() => void s.prev()}
-        className="rounded-full p-2.5 text-white transition hover:bg-white/10"
-        title="Previous" aria-label="Previous track"
+        className={clsx('rounded-full p-2.5 text-white transition hover:bg-white/10', transportLocked && 'opacity-45')}
+        title={transportLocked ? 'The host controls playback' : 'Previous'} aria-label="Previous track"
       >
         <SkipBack size={size === 'md' ? 26 : 22} fill="currentColor" />
       </button>
       <button
         onClick={s.toggle}
-        className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-white text-ink-950 shadow-2xl transition hover:scale-105 active:scale-95 glow-accent"
-        title={s.playing ? 'Pause' : 'Play'} aria-label={s.playing ? 'Pause' : 'Play'}
+        className={clsx('flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-white text-ink-950 shadow-2xl transition hover:scale-105 active:scale-95 glow-accent', transportLocked && 'opacity-45')}
+        title={transportLocked ? 'The host controls playback' : s.playing ? 'Pause' : 'Play'} aria-label={s.playing ? 'Pause' : 'Play'}
       >
         {s.playing ? <Pause size={28} fill="currentColor" /> : <Play size={28} fill="currentColor" className="ml-1" />}
       </button>
       <button
         onClick={() => void s.next()}
-        className="rounded-full p-2.5 text-white transition hover:bg-white/10"
-        title="Next" aria-label="Next track"
+        className={clsx('rounded-full p-2.5 text-white transition hover:bg-white/10', transportLocked && 'opacity-45')}
+        title={transportLocked ? 'The host controls playback' : 'Next'} aria-label="Next track"
       >
         <SkipForward size={size === 'md' ? 26 : 22} fill="currentColor" />
       </button>
@@ -268,7 +310,7 @@ export function FullPlayer() {
         <Music2 size={13} />Song
       </button>
       <button
-        onClick={() => { setMode('video'); if (!s.videoExpanded) s.toggleVideoExpanded() }}
+        onClick={() => setMode('video')}
         disabled={!videoAvailable}
         aria-pressed={mode === 'video'}
         title={videoAvailable ? 'Show the video' : 'This track has no video'}
@@ -422,42 +464,112 @@ export function FullPlayer() {
       </div>
     ) : null
 
-  const MobileFooter = ({ className = '' }: { className?: string }) => (
-    <footer
-      className={clsx(
-        'relative z-20 flex items-center justify-around border-t border-white/10 bg-black/40 pt-3 backdrop-blur-xl lg:hidden',
-        className,
-      )}
-      style={{
-        paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 0.75rem)',
+  /*
+    Queue, Cast, Download and Info used to be a permanent bar pinned across the
+    bottom of the player on phones. Four always-visible controls is a lot of
+    vertical space to spend on actions taken once a session, and on a short
+    screen it was the artwork and the lyrics that gave up the room. They live
+    behind one ⋯ button in the top-right corner now.
+  */
+  const MenuItem = ({
+    icon: Icon, label, onClick, active = false, trailing, spinning = false,
+  }: {
+    icon: typeof ListMusic
+    label: string
+    onClick: () => void
+    active?: boolean
+    trailing?: ReactNode
+    spinning?: boolean
+  }) => (
+    <button
+      role="menuitem"
+      onClick={() => {
+        setMenuOpen(false)
+        onClick()
       }}
-    >
-      <button
-        onClick={() => togglePanel('queue')}
-        aria-pressed={activeTab === 'queue' && showRightPanel}
-        className={clsx('flex min-h-11 items-center gap-2 px-3 text-xs font-semibold transition', activeTab === 'queue' && showRightPanel ? 'text-accent' : 'text-white/70')}
-      >
-        <ListMusic size={17} />Queue
-      </button>
-      <CastButton variant="labeled" />
-      {downloadSupported && (
-        <button
-          onClick={() => (downloadStatus === 'done' ? void removeDownload() : void download())}
-          aria-busy={downloadStatus === 'downloading' || undefined}
-          className={clsx('flex min-h-11 items-center gap-2 px-3 text-xs font-semibold transition', downloadStatus === 'done' ? 'text-accent' : 'text-white/70')}
-        >
-          {downloadStatus === 'downloading' ? <Loader2 size={17} className="animate-spin" /> : <Download size={17} />}
-          {downloadStatus === 'done' ? 'Saved' : 'Download'}
-        </button>
+      className={clsx(
+        'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition hover:bg-white/10',
+        active ? 'text-accent' : 'text-white/85 hover:text-white',
       )}
+    >
+      <Icon size={17} className={clsx('shrink-0', spinning && 'animate-spin')} />
+      <span className="flex-1 text-left">{label}</span>
+      {trailing}
+    </button>
+  )
+
+  const MoreMenu = ({ className = '' }: { className?: string }) => (
+    <div ref={moreMenuRef} className={clsx('relative', className)}>
       <button
-        onClick={() => togglePanel('info')}
-        aria-pressed={activeTab === 'info' && showRightPanel}
-        className={clsx('flex min-h-11 items-center gap-2 px-3 text-xs font-semibold transition', activeTab === 'info' && showRightPanel ? 'text-accent' : 'text-white/70')}
+        onClick={() => setMenuOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        title="More actions"
+        aria-label="More actions"
+        className={clsx(
+          'rounded-full p-2.5 transition',
+          menuOpen ? 'bg-white/25 text-white' : 'bg-white/10 text-white/90 hover:bg-white/20',
+        )}
       >
-        <Info size={17} />Info
+        <MoreVertical size={18} />
       </button>
-    </footer>
+
+      {menuOpen && (
+        <div
+          role="menu"
+          aria-label="Track actions"
+          className="absolute top-full right-0 z-50 mt-2 w-60 rounded-2xl border border-white/15 bg-black/60 p-1.5 shadow-2xl backdrop-blur-2xl"
+        >
+          {MenuItem({
+            icon: ListMusic,
+            label: 'Queue',
+            active: activeTab === 'queue' && showRightPanel,
+            onClick: () => togglePanel('queue'),
+            trailing: (
+              <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] tabular-nums text-white/70">
+                {s.queue.length}
+              </span>
+            ),
+          })}
+          {MenuItem({
+            icon: Sparkles,
+            label: 'Lyrics',
+            active: activeTab === 'lyrics' && showRightPanel,
+            onClick: () => togglePanel('lyrics'),
+          })}
+          {MenuItem({
+            icon: Info,
+            label: 'Track info',
+            active: activeTab === 'info' && showRightPanel,
+            onClick: () => togglePanel('info'),
+          })}
+
+          <div className="mx-2 my-1 h-px bg-white/10" aria-hidden />
+
+          <CastButton variant="menu" />
+          {downloadSupported &&
+            MenuItem({
+              icon:
+                downloadStatus === 'downloading' ? Loader2 : downloadStatus === 'done' ? Trash2 : Download,
+              spinning: downloadStatus === 'downloading',
+              label:
+                downloadStatus === 'downloading'
+                  ? 'Downloading…'
+                  : downloadStatus === 'done'
+                    ? 'Remove download'
+                    : 'Download for offline',
+              active: downloadStatus === 'done',
+              onClick: () => (downloadStatus === 'done' ? void removeDownload() : void download()),
+            })}
+          {MenuItem({
+            icon: shareState === 'copied' ? Check : Share2,
+            label: shareState === 'copied' ? 'Link copied' : 'Share',
+            active: shareState === 'copied',
+            onClick: () => void handleShare(),
+          })}
+        </div>
+      )}
+    </div>
   )
 
   // ════════════════════════════════════════════════════════════════════════
@@ -471,16 +583,19 @@ export function FullPlayer() {
         aria-modal="true"
         aria-label={`Now playing: ${current.title}`}
         tabIndex={-1}
-        className="fixed inset-0 z-50 flex flex-col overflow-hidden text-white outline-none"
+        className="animate-player-in fixed inset-0 z-50 flex flex-col overflow-hidden text-white outline-none"
         style={{ background: 'linear-gradient(135deg, #2e050e 0%, #4a0e17 40%, #881337 75%, #9f1239 100%)' }}
       >
         <header className="relative z-20 flex items-center justify-between px-5 py-4 backdrop-blur-sm" style={{ paddingTop: 'max(env(safe-area-inset-top,0px), 1rem)' }}>
           <button onClick={closeFullPlayer} className="rounded-full bg-white/10 p-2.5 text-white/90 transition hover:bg-white/20"><ChevronDown size={22} /></button>
           <span className="flex items-center gap-1.5 text-xs font-bold tracking-widest text-rose-200 uppercase"><Flower2 size={15} className="text-rose-400" /> Cherry Blossom</span>
-          <button onClick={() => togglePanel('lyrics')} aria-pressed={activeTab === 'lyrics' && showRightPanel} className="rounded-full bg-white/10 p-2.5 transition hover:bg-white/20"><FileText size={18} /></button>
+          <div className="flex items-center gap-1.5">
+            <button onClick={() => togglePanel('lyrics')} aria-pressed={activeTab === 'lyrics' && showRightPanel} title="Lyrics" className="rounded-full bg-white/10 p-2.5 transition hover:bg-white/20"><FileText size={18} /></button>
+            {MoreMenu({})}
+          </div>
         </header>
 
-        <div className="relative z-10 flex flex-1 flex-col items-center justify-around overflow-y-auto px-6 pb-6 pt-2">
+        <div className="relative z-10 flex flex-1 flex-col items-center justify-around overflow-y-auto px-6 pt-2 pb-safe">
           <div className={clsx('relative aspect-square transition-all duration-300', showRightPanel ? 'w-52 sm:w-64' : 'w-64 sm:w-80 lg:w-96')}>
             <div className="absolute inset-0 rounded-full bg-rose-500/30 blur-2xl animate-pulse" />
             <div className="relative overflow-hidden rounded-full border-4 border-rose-300/30 shadow-2xl">
@@ -514,7 +629,6 @@ export function FullPlayer() {
 
           {showRightPanel && RightPanel({ className: 'w-full max-w-md h-64 border-rose-500/20 bg-rose-950/40' })}
         </div>
-        {MobileFooter({ className: 'border-rose-500/20 bg-rose-950/40' })}
       </div>
     )
   }
@@ -530,16 +644,19 @@ export function FullPlayer() {
         aria-modal="true"
         aria-label={`Now playing: ${current.title}`}
         tabIndex={-1}
-        className="fixed inset-0 z-50 flex flex-col overflow-hidden text-white outline-none"
+        className="animate-player-in fixed inset-0 z-50 flex flex-col overflow-hidden text-white outline-none"
         style={{ background: 'linear-gradient(135deg, #3b1207 0%, #7c2d12 40%, #c2410c 70%, #f97316 100%)' }}
       >
         <header className="relative z-20 flex items-center justify-between px-5 py-4 backdrop-blur-sm" style={{ paddingTop: 'max(env(safe-area-inset-top,0px), 1rem)' }}>
           <button onClick={closeFullPlayer} className="rounded-full bg-white/10 p-2.5 text-white/90 transition hover:bg-white/20"><ChevronDown size={22} /></button>
           <span className="flex items-center gap-1.5 text-xs font-bold tracking-widest text-amber-200 uppercase"><Sun size={15} className="text-amber-400" /> Sunset Shades</span>
-          <button onClick={() => togglePanel('lyrics')} aria-pressed={activeTab === 'lyrics' && showRightPanel} className="rounded-full bg-white/10 p-2.5 transition hover:bg-white/20"><FileText size={18} /></button>
+          <div className="flex items-center gap-1.5">
+            <button onClick={() => togglePanel('lyrics')} aria-pressed={activeTab === 'lyrics' && showRightPanel} title="Lyrics" className="rounded-full bg-white/10 p-2.5 transition hover:bg-white/20"><FileText size={18} /></button>
+            {MoreMenu({})}
+          </div>
         </header>
 
-        <div className="relative z-10 flex flex-1 flex-col items-center justify-around overflow-y-auto px-6 pb-6 pt-2">
+        <div className="relative z-10 flex flex-1 flex-col items-center justify-around overflow-y-auto px-6 pt-2 pb-safe">
           <div className={clsx('relative aspect-square transition-all duration-300', showRightPanel ? 'w-52 sm:w-64' : 'w-64 sm:w-80 lg:w-96')}>
             <div className="absolute inset-0 rounded-3xl bg-amber-500/30 blur-2xl" />
             <div className="relative overflow-hidden rounded-3xl border-4 border-amber-300/30 shadow-2xl">
@@ -573,7 +690,6 @@ export function FullPlayer() {
 
           {showRightPanel && RightPanel({ className: 'w-full max-w-md h-64 border-orange-500/20 bg-orange-950/40' })}
         </div>
-        {MobileFooter({ className: 'border-orange-500/20 bg-orange-950/40' })}
       </div>
     )
   }
@@ -589,16 +705,19 @@ export function FullPlayer() {
         aria-modal="true"
         aria-label={`Now playing: ${current.title}`}
         tabIndex={-1}
-        className="fixed inset-0 z-50 flex flex-col overflow-hidden text-white outline-none"
+        className="animate-player-in fixed inset-0 z-50 flex flex-col overflow-hidden text-white outline-none"
         style={{ background: 'linear-gradient(135deg, #022c22 0%, #064e3b 40%, #0f766e 70%, #06b6d4 100%)' }}
       >
         <header className="relative z-20 flex items-center justify-between px-5 py-4 backdrop-blur-sm" style={{ paddingTop: 'max(env(safe-area-inset-top,0px), 1rem)' }}>
           <button onClick={closeFullPlayer} className="rounded-full bg-white/10 p-2.5 text-white/90 transition hover:bg-white/20"><ChevronDown size={22} /></button>
           <span className="flex items-center gap-1.5 text-xs font-bold tracking-widest text-cyan-200 uppercase"><Sparkles size={15} className="text-cyan-400" /> Arc Studio</span>
-          <button onClick={() => togglePanel('lyrics')} aria-pressed={activeTab === 'lyrics' && showRightPanel} className="rounded-full bg-white/10 p-2.5 transition hover:bg-white/20"><FileText size={18} /></button>
+          <div className="flex items-center gap-1.5">
+            <button onClick={() => togglePanel('lyrics')} aria-pressed={activeTab === 'lyrics' && showRightPanel} title="Lyrics" className="rounded-full bg-white/10 p-2.5 transition hover:bg-white/20"><FileText size={18} /></button>
+            {MoreMenu({})}
+          </div>
         </header>
 
-        <div className="relative z-10 flex flex-1 flex-col items-center justify-around overflow-y-auto px-6 pb-6 pt-2">
+        <div className="relative z-10 flex flex-1 flex-col items-center justify-around overflow-y-auto px-6 pt-2 pb-safe">
           <div className={clsx('relative aspect-[4/5] transition-all duration-300', showRightPanel ? 'w-52 sm:w-64' : 'w-60 sm:w-72 lg:w-80')}>
             <div className="absolute inset-0 rounded-t-[100px] rounded-b-3xl bg-cyan-500/25 blur-2xl" />
             <div className="relative overflow-hidden rounded-t-[100px] rounded-b-3xl border-4 border-cyan-300/40 shadow-2xl">
@@ -632,7 +751,6 @@ export function FullPlayer() {
 
           {showRightPanel && RightPanel({ className: 'w-full max-w-md h-64 border-cyan-500/20 bg-teal-950/40' })}
         </div>
-        {MobileFooter({ className: 'border-cyan-500/20 bg-teal-950/40' })}
       </div>
     )
   }
@@ -648,16 +766,19 @@ export function FullPlayer() {
         aria-modal="true"
         aria-label={`Now playing: ${current.title}`}
         tabIndex={-1}
-        className="fixed inset-0 z-50 flex flex-col overflow-hidden text-white outline-none"
+        className="animate-player-in fixed inset-0 z-50 flex flex-col overflow-hidden text-white outline-none"
         style={{ background: 'linear-gradient(135deg, #090d16 0%, #1e1b4b 45%, #4338ca 75%, #6366f1 100%)' }}
       >
         <header className="relative z-20 flex items-center justify-between px-5 py-4 backdrop-blur-sm" style={{ paddingTop: 'max(env(safe-area-inset-top,0px), 1rem)' }}>
           <button onClick={closeFullPlayer} className="rounded-full bg-white/10 p-2.5 text-white/90 transition hover:bg-white/20"><ChevronDown size={22} /></button>
           <span className="flex items-center gap-1.5 text-xs font-bold tracking-widest text-indigo-200 uppercase"><Sparkles size={15} className="text-indigo-400" /> Cosmic Aurora</span>
-          <button onClick={() => togglePanel('lyrics')} aria-pressed={activeTab === 'lyrics' && showRightPanel} className="rounded-full bg-white/10 p-2.5 transition hover:bg-white/20"><FileText size={18} /></button>
+          <div className="flex items-center gap-1.5">
+            <button onClick={() => togglePanel('lyrics')} aria-pressed={activeTab === 'lyrics' && showRightPanel} title="Lyrics" className="rounded-full bg-white/10 p-2.5 transition hover:bg-white/20"><FileText size={18} /></button>
+            {MoreMenu({})}
+          </div>
         </header>
 
-        <div className="relative z-10 flex flex-1 flex-col items-center justify-around overflow-y-auto px-6 pb-6 pt-2">
+        <div className="relative z-10 flex flex-1 flex-col items-center justify-around overflow-y-auto px-6 pt-2 pb-safe">
           <div className={clsx('relative aspect-square transition-all duration-300', showRightPanel ? 'w-52 sm:w-64' : 'w-64 sm:w-80 lg:w-96')}>
             <div className="absolute inset-0 rounded-full bg-indigo-500/35 blur-3xl animate-pulse" />
             <div className="relative overflow-hidden rounded-full border-4 border-indigo-300/40 shadow-2xl glow-accent">
@@ -691,7 +812,6 @@ export function FullPlayer() {
 
           {showRightPanel && RightPanel({ className: 'w-full max-w-md h-64 border-indigo-500/20 bg-indigo-950/40' })}
         </div>
-        {MobileFooter({ className: 'border-indigo-500/20 bg-indigo-950/40' })}
       </div>
     )
   }
@@ -707,17 +827,20 @@ export function FullPlayer() {
         aria-modal="true"
         aria-label={`Now playing: ${current.title}`}
         tabIndex={-1}
-        className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-gray-950 text-white outline-none"
+        className="animate-player-in fixed inset-0 z-50 flex flex-col overflow-hidden bg-gray-950 text-white outline-none"
       >
         <header className="relative z-20 flex items-center justify-between px-5 py-4" style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 1rem)' }}>
           <button onClick={closeFullPlayer} className="rounded-full p-2 text-gray-400 hover:text-white"><ChevronDown size={24} /></button>
           <span className="text-[11px] font-semibold tracking-[0.2em] text-gray-500 uppercase">Minimal</span>
-          <button onClick={() => void handleShare()} className="rounded-full p-2 text-gray-400 hover:text-white">
-            {shareState === 'copied' ? <Check size={20} /> : <Share2 size={20} />}
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button onClick={() => togglePanel('lyrics')} aria-pressed={activeTab === 'lyrics' && showRightPanel} title="Lyrics" className="rounded-full p-2 text-gray-400 hover:text-white">
+              <FileText size={20} />
+            </button>
+            {MoreMenu({})}
+          </div>
         </header>
 
-        <div className="relative z-10 flex flex-1 flex-col items-center justify-start gap-6 overflow-y-auto px-6 py-4">
+        <div className="relative z-10 flex min-h-0 flex-1 flex-col items-center justify-start gap-6 overflow-y-auto px-4 pt-4 sm:px-6 pb-safe">
           <div className="flex w-full max-w-4xl flex-col items-center gap-4 lg:flex-row lg:items-center lg:justify-around">
             <div className="relative aspect-square w-48 shrink-0 overflow-hidden rounded-2xl shadow-2xl sm:w-60">
               <Artwork src={current.artwork} alt="" className="h-full w-full" rounded="rounded-2xl" />
@@ -760,11 +883,9 @@ export function FullPlayer() {
           </div>
 
           {showRightPanel && (
-            RightPanel({ className: 'w-full max-w-4xl h-[400px] lg:h-[500px] border-gray-800 bg-gray-900/60' })
+            RightPanel({ className: 'w-full max-w-4xl h-[clamp(260px,46dvh,400px)] lg:h-[clamp(340px,66dvh,500px)] border-gray-800 bg-gray-900/60' })
           )}
         </div>
-
-        {MobileFooter({ className: 'border-gray-800 bg-gray-950' })}
       </div>
     )
   }
@@ -811,7 +932,7 @@ export function FullPlayer() {
         aria-modal="true"
         aria-label={`Now playing: ${current.title}`}
         tabIndex={-1}
-        className="player-surface fixed inset-0 z-50 flex flex-col overflow-hidden text-white outline-none"
+        className="player-surface animate-player-in fixed inset-0 z-50 flex flex-col overflow-hidden text-white outline-none"
         style={{ background: cfg.bg }}
       >
         {/* soft artwork bloom */}
@@ -829,16 +950,20 @@ export function FullPlayer() {
             <ChevronDown size={22} />
           </button>
           <span className={clsx('text-xs font-bold tracking-[0.2em] uppercase', cfg.kicker)}>{cfg.label}</span>
-          <button
-            onClick={() => togglePanel('lyrics')}
-            aria-pressed={activeTab === 'lyrics' && showRightPanel}
-            className="rounded-full bg-white/10 p-2.5 transition hover:bg-white/20"
-          >
-            <FileText size={18} />
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => togglePanel('lyrics')}
+              aria-pressed={activeTab === 'lyrics' && showRightPanel}
+              title="Lyrics"
+              className="rounded-full bg-white/10 p-2.5 transition hover:bg-white/20"
+            >
+              <FileText size={18} />
+            </button>
+            {MoreMenu({})}
+          </div>
         </header>
 
-        <div className="relative z-10 flex flex-1 flex-col items-center justify-around gap-5 overflow-y-auto px-6 pb-6 pt-2">
+        <div className="relative z-10 flex min-h-0 flex-1 flex-col items-center justify-around gap-5 overflow-y-auto px-4 pt-2 sm:px-6 pb-safe">
           {/* Framed square artwork with a coloured bloom */}
           <div className={clsx('relative aspect-square transition-all duration-300', showRightPanel ? 'w-52 sm:w-60' : 'w-64 sm:w-80')}>
             <div className={clsx('absolute -inset-6 rounded-[2rem] blur-3xl', cfg.glow)} />
@@ -878,13 +1003,157 @@ export function FullPlayer() {
 
           {showRightPanel && RightPanel({ className: clsx('w-full max-w-md h-64', cfg.panel) })}
         </div>
-        {MobileFooter({ className: cfg.panel })}
       </div>
     )
   }
 
   // ════════════════════════════════════════════════════════════════════════
-  // THEME: CLASSIC / NEUMORPHIC / VIBRANT / GLASS PRO
+  // THEME: GLASS PRO — every surface is a pane of liquid glass
+  // ════════════════════════════════════════════════════════════════════════
+  if (playerTheme === 'glasspro') {
+    return (
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Now playing: ${current.title}`}
+        tabIndex={-1}
+        className="player-surface animate-player-in fixed inset-0 z-50 flex flex-col overflow-hidden text-white outline-none"
+        style={{ background: '#05070f' }}
+      >
+        {/* Backdrop, in two layers: the track's own colour bloom, then the same
+            drifting aurora the rest of the app sits on, so the panes here
+            refract the identical material they do behind the overlay. */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 transition-[background] duration-700"
+          style={{ background: bgGradient }}
+        >
+          {current.artwork && (
+            <img src={current.artwork} alt="" className="h-full w-full scale-125 object-cover opacity-30 blur-3xl" />
+          )}
+        </div>
+        <div aria-hidden className="lg-aurora lg-aurora--overlay" />
+
+        <header
+          data-shell="topbar"
+          className="relative z-20 flex shrink-0 items-center justify-between gap-2 border-b border-white/10 px-3 py-3 sm:px-6"
+          style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 0.75rem)' }}
+        >
+          <button
+            onClick={closeFullPlayer}
+            className="rounded-full bg-white/10 p-2 text-white/85 transition hover:bg-white/20 hover:text-white"
+            title="Minimize player"
+            aria-label="Minimize player"
+          >
+            <ChevronDown size={22} />
+          </button>
+          {ModeBar()}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => { if (!document.fullscreenElement) void document.documentElement.requestFullscreen().catch(() => {}); else void document.exitFullscreen().catch(() => {}) }}
+              className="hidden rounded-full p-2 text-white/75 transition hover:bg-white/10 hover:text-white lg:block"
+              title="Toggle browser fullscreen"
+            >
+              <Maximize2 size={19} />
+            </button>
+            {MoreMenu({})}
+          </div>
+        </header>
+
+        {/*
+          min-h-0 is what lets this scroll: a flex child defaults to
+          min-height:auto, which refuses to shrink below its content, so on a
+          landscape phone the controls used to push out past the viewport
+          instead of the column scrolling.
+        */}
+        <div className="relative z-10 mx-auto grid min-h-0 w-full max-w-7xl flex-1 grid-cols-1 items-start gap-5 overflow-y-auto p-3 sm:p-6 lg:grid-cols-12 lg:items-center lg:gap-8 lg:p-8 pb-safe">
+          <div
+            className={clsx(
+              'mx-auto flex w-full flex-col items-center gap-4 text-center transition-all duration-300',
+              showRightPanel ? 'max-w-md lg:col-span-5' : 'max-w-xl lg:col-span-12',
+            )}
+          >
+            <div className="hidden w-full max-w-sm items-center justify-center gap-4 rounded-full bg-white/10 px-4 py-2 lg:flex">
+              <button
+                onClick={() => setShowRightPanel((v) => !v)}
+                aria-pressed={showRightPanel}
+                title="Lyrics & queue"
+                className={clsx('flex h-10 w-10 items-center justify-center rounded-full transition hover:scale-105 active:scale-95', showRightPanel ? 'bg-white text-ink-950 shadow-lg' : 'bg-white/15 text-white hover:bg-white/25')}
+              >
+                <FileText size={18} />
+              </button>
+              <CastButton />
+              <button onClick={() => void handleShare()} className="rounded-full p-2 text-white/75 transition hover:bg-white/15 hover:text-white" title="Share track">
+                {shareState === 'copied' ? <Check size={18} className="text-accent" /> : <Share2 size={18} />}
+              </button>
+              {downloadSupported && (
+                <button
+                  onClick={() => (downloadStatus === 'done' ? void removeDownload() : void download())}
+                  title={downloadStatus === 'done' ? 'Remove download' : 'Download for offline'}
+                  className={clsx('rounded-full p-2 transition hover:bg-white/15', downloadStatus === 'done' ? 'text-accent' : 'text-white/75 hover:text-white')}
+                >
+                  {downloadStatus === 'downloading' ? <Loader2 size={18} className="animate-spin text-accent" /> : <Download size={18} />}
+                </button>
+              )}
+            </div>
+            {ShareResult()}
+
+            {/* Artwork mounted behind glass: a bevelled frame, and a specular
+                streak raking across the art itself. */}
+            <div
+              className={clsx(
+                'lg-glass relative aspect-square w-full rounded-[2rem] p-3 transition-all duration-300',
+                showRightPanel ? 'max-w-[264px] sm:max-w-[300px]' : 'max-w-[320px] sm:max-w-[400px]',
+              )}
+            >
+              <div className="relative h-full w-full overflow-hidden rounded-[1.35rem] shadow-2xl">
+                <Artwork src={current.artwork} alt="" className="h-full w-full" rounded="rounded-[1.35rem]" />
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute inset-0"
+                  style={{
+                    background:
+                      'linear-gradient(147deg, rgba(255,255,255,0.42) 0%, rgba(255,255,255,0.08) 22%, rgba(255,255,255,0) 44%)',
+                    mixBlendMode: 'overlay',
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="w-full space-y-1 px-2">
+              <p className="truncate text-[11px] font-semibold tracking-[0.22em] text-sky-200/80 uppercase">{current.artist}</p>
+              <h1 className="font-display line-clamp-2 text-xl font-extrabold tracking-tight text-white [text-wrap:balance] sm:text-3xl">
+                {current.title}
+              </h1>
+            </div>
+
+            {/* Scrubber and transport share one glass console. */}
+            <div className="lg-glass w-full rounded-[1.75rem] px-2 py-4 sm:px-4">
+              {ScrubBar({})}
+              {Transport({})}
+            </div>
+
+            <div className="flex w-full items-center justify-center">{FavButton()}</div>
+
+            {!showRightPanel && (
+              <button
+                onClick={() => setShowRightPanel(true)}
+                className="lg-glass flex items-center gap-2 rounded-full px-5 py-2 text-xs font-semibold text-white transition hover:scale-105 active:scale-95"
+              >
+                <Sparkles size={14} className="text-accent" /> Show Lyrics &amp; Queue
+              </button>
+            )}
+          </div>
+
+          {RightPanel({ className: 'h-[clamp(260px,46dvh,440px)] lg:col-span-7 lg:h-[clamp(360px,72dvh,600px)]' })}
+        </div>
+      </div>
+    )
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // THEME: CLASSIC / NEUMORPHIC
   // ════════════════════════════════════════════════════════════════════════
   return (
     <div
@@ -896,7 +1165,7 @@ export function FullPlayer() {
       // player-surface: this is a dark immersive overlay on EVERY theme, so the
       // light-scheme (neumorphic) overrides that darken .text-white etc. must be
       // undone inside it — otherwise the title/controls go dark-on-dark. (see index.css)
-      className="player-surface fixed inset-0 z-50 flex flex-col overflow-hidden bg-[#0b0914] text-white outline-none"
+      className="player-surface animate-player-in fixed inset-0 z-50 flex flex-col overflow-hidden bg-[#0b0914] text-white outline-none"
     >
       <div aria-hidden className="pointer-events-none absolute inset-0 transition-[background] duration-700" style={{ background: bgGradient }}>
         {current.artwork && (
@@ -910,19 +1179,14 @@ export function FullPlayer() {
         </button>
         {ModeBar()}
         <div className="flex items-center gap-1">
-          <button onClick={() => togglePanel('lyrics')} aria-pressed={activeTab === 'lyrics' && showRightPanel} className={clsx('rounded-full p-2 transition hover:bg-white/10 lg:hidden', activeTab === 'lyrics' && showRightPanel ? 'text-accent' : 'text-white/70')}>
-            <FileText size={21} />
-          </button>
-          <button onClick={() => void handleShare()} className="rounded-full p-2 text-white/70 transition hover:bg-white/10 hover:text-white lg:hidden" title="Share track">
-            {shareState === 'copied' ? <Check size={21} className="text-accent" /> : <Share2 size={21} />}
-          </button>
-          <button onClick={() => { if (!document.fullscreenElement) void document.documentElement.requestFullscreen().catch(() => {}); else void document.exitFullscreen().catch(() => {}) }} className="hidden rounded-full p-2 text-white/70 transition hover:bg-white/10 hover:text-white lg:block">
+          <button onClick={() => { if (!document.fullscreenElement) void document.documentElement.requestFullscreen().catch(() => {}); else void document.exitFullscreen().catch(() => {}) }} title="Toggle browser fullscreen" className="hidden rounded-full p-2 text-white/70 transition hover:bg-white/10 hover:text-white lg:block">
             <Maximize2 size={20} />
           </button>
+          {MoreMenu({})}
         </div>
       </header>
 
-      <div className="relative z-10 mx-auto grid w-full max-w-7xl flex-1 grid-cols-1 items-center gap-6 overflow-y-auto p-4 sm:p-8 lg:grid-cols-12 lg:gap-10">
+      <div className="relative z-10 mx-auto grid min-h-0 w-full max-w-7xl flex-1 grid-cols-1 items-start gap-6 overflow-y-auto p-4 sm:p-8 lg:grid-cols-12 lg:items-center lg:gap-10 pb-safe">
         <div className={clsx('mx-auto flex w-full flex-col items-center justify-center space-y-5 text-center transition-all duration-300', showRightPanel ? 'max-w-md lg:col-span-5' : 'max-w-xl lg:col-span-12')}>
           <div className="hidden w-full max-w-sm items-center justify-center gap-5 border-b border-white/10 pb-2 lg:flex">
             <button onClick={() => setShowRightPanel((v) => !v)} aria-pressed={showRightPanel} className={clsx('flex h-11 w-11 items-center justify-center rounded-full shadow-xl transition hover:scale-105 active:scale-95', showRightPanel ? 'bg-white text-ink-950 ring-4 ring-white/20 glow-accent' : 'bg-white/20 text-white hover:bg-white/30')}>
@@ -958,9 +1222,8 @@ export function FullPlayer() {
             </button>
           )}
         </div>
-        {RightPanel({ className: 'h-[420px] lg:col-span-7 lg:h-[580px]' })}
+        {RightPanel({ className: 'h-[clamp(260px,46dvh,420px)] lg:col-span-7 lg:h-[clamp(360px,72dvh,580px)]' })}
       </div>
-      {MobileFooter({})}
     </div>
   )
 }

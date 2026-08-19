@@ -2,8 +2,9 @@ import { create } from 'zustand'
 import type { Track } from '@/types'
 import { keyOf } from '@/lib/db'
 import { engineFor, isFromCache, type PlaybackEngine } from '@/playback'
-import { getMatchingRecommendations, identityOf } from '@/services/recommendations'
+import { getMatchingRecommendations, identityOf, titleKeyOf } from '@/services/recommendations'
 import { getVolume, setVolume as persistVolume } from '@/lib/prefs'
+import { resolvePlayable } from '@/services/resolve'
 
 /**
  * Radio tail sizing.
@@ -75,7 +76,17 @@ interface PlayerState {
   videoActive: boolean
   /** whether the video frame is showing large or as a thumbnail */
   videoExpanded: boolean
+  /**
+   * True while the full player is showing the video in place of the artwork.
+   *
+   * The frame can never be re-parented into the full player — moving an iframe
+   * in the DOM reloads it, which would restart the song — so it stays where it
+   * is and is positioned over the artwork instead. This flag is what tells it
+   * to move there.
+   */
+  videoDocked: boolean
   toggleVideoExpanded: () => void
+  setVideoDocked: (docked: boolean) => void
 
   fullPlayerOpen: boolean
   playerViewMode: 'bar' | 'full' | 'card'
@@ -85,6 +96,48 @@ interface PlayerState {
   setPlayerViewMode: (mode: 'bar' | 'full' | 'card') => void
 
   _sync: (patch: Partial<PlayerState>) => void
+}
+
+/**
+ * Actions that change what the room hears. In a listening room these are the
+ * ones the host owns, so they are routed through an optional gate.
+ */
+export type TransportAction = 'play' | 'pause' | 'toggle' | 'next' | 'prev' | 'seek' | 'load'
+
+type TransportGate = (action: TransportAction) => boolean
+
+/**
+ * Set by the room store while a room is joined.
+ *
+ * Without this, a listener pressing Play only desynced themselves: the room
+ * never heard about it, so their audio quietly diverged from everyone else's
+ * with nothing in the UI to say why. The gate refuses the action instead, and
+ * the room store explains it.
+ */
+let transportGate: TransportGate | null = null
+
+export function setTransportGate(gate: TransportGate | null) {
+  transportGate = gate
+}
+
+function allowed(action: TransportAction): boolean {
+  return transportGate ? transportGate(action) : true
+}
+
+/**
+ * Fired after any *local* transport change, so a room can publish it at once
+ * rather than waiting for the next heartbeat. A seek used to take up to five
+ * seconds to reach the room; now it is one message.
+ */
+const transportListeners = new Set<(action: TransportAction) => void>()
+
+export function onTransport(fn: (action: TransportAction) => void): () => void {
+  transportListeners.add(fn)
+  return () => transportListeners.delete(fn)
+}
+
+function emitTransport(action: TransportAction) {
+  transportListeners.forEach((fn) => fn(action))
 }
 
 /** the engine currently driving playback, so we can stop it before switching */
@@ -145,10 +198,12 @@ export const usePlayer = create<PlayerState>((set, get) => ({
   fromCache: false,
   videoActive: false,
   videoExpanded: false,
+  videoDocked: false,
   fullPlayerOpen: false,
   playerViewMode: 'bar',
 
   toggleVideoExpanded: () => set((s) => ({ videoExpanded: !s.videoExpanded })),
+  setVideoDocked: (docked) => set({ videoDocked: docked }),
   openFullPlayer: () => set({ fullPlayerOpen: true }),
   closeFullPlayer: () => set({ fullPlayerOpen: false }),
   toggleFullPlayer: () => set((s) => ({ fullPlayerOpen: !s.fullPlayerOpen })),
@@ -161,7 +216,7 @@ export const usePlayer = create<PlayerState>((set, get) => ({
   _sync: (patch) => set(patch),
 
   async playQueue(tracks, startAt = 0) {
-    if (!tracks.length) return
+    if (!tracks.length || !allowed('load')) return
     set({ queue: tracks, queueExhausted: false })
     history.length = 0
     await load(startAt, set, get)
@@ -173,13 +228,14 @@ export const usePlayer = create<PlayerState>((set, get) => ({
     shuffle lasted exactly one song. Turning the mode on is the point.
   */
   async playShuffled(tracks) {
-    if (!tracks.length) return
+    if (!tracks.length || !allowed('load')) return
     set({ shuffle: true, queue: tracks, queueExhausted: false })
     history.length = 0
     await load(Math.floor(Math.random() * tracks.length), set, get)
   },
 
   async playTrack(track, queue) {
+    if (!allowed('load')) return
     const q = queue?.length ? queue : [track]
     const found = q.findIndex((t) => keyOf(t) === keyOf(track))
     // If the supplied queue doesn't contain the track (a filtered or stale
@@ -196,7 +252,7 @@ export const usePlayer = create<PlayerState>((set, get) => ({
   },
 
   toggle() {
-    if (!activeEngine || !get().current) return
+    if (!activeEngine || !get().current || !allowed('toggle')) return
     // Trust the ENGINE's real state, not the store flag — a missed 'play'/'pause'
     // media event could leave the flag stale, which made the first click a no-op
     // (it only "fixed" the flag) and forced a second click to actually toggle.
@@ -206,7 +262,9 @@ export const usePlayer = create<PlayerState>((set, get) => ({
 
   play() {
     if (!activeEngine || !get().current || activeEngine.isPlaying()) return
+    if (!allowed('play')) return
     set({ playing: true })
+    emitTransport('play')
     // a successful play means any previous failure is no longer relevant
     void activeEngine
       .play()
@@ -215,13 +273,15 @@ export const usePlayer = create<PlayerState>((set, get) => ({
   },
 
   pause() {
+    if (!allowed('pause')) return
     if (activeEngine?.isPlaying()) activeEngine.pause()
     set({ playing: false })
+    emitTransport('pause')
   },
 
   async jumpTo(i) {
     const { queue, index } = get()
-    if (!queue[i] || i === index) return
+    if (!queue[i] || i === index || !allowed('load')) return
     const currentTrack = queue[index]
     if (currentTrack) pushHistory(keyOf(currentTrack))
     await load(i, set, get)
@@ -230,6 +290,9 @@ export const usePlayer = create<PlayerState>((set, get) => ({
   async next(auto = false) {
     const { queue, index, repeat, shuffle } = get()
     if (!queue.length) return
+    // An auto-advance is still a room-wide event: if this client isn't driving,
+    // the controller's next track will arrive on its own.
+    if (!allowed('next')) return
 
     if (auto && repeat === 'one') {
       await load(index, set, get)
@@ -272,6 +335,7 @@ export const usePlayer = create<PlayerState>((set, get) => ({
   },
 
   async prev() {
+    if (!allowed('prev')) return
     const { position, index, queue } = get()
     // standard behaviour: restart the track unless we're in the first 3 seconds
     if (position > 3 && activeEngine) {
@@ -300,7 +364,7 @@ export const usePlayer = create<PlayerState>((set, get) => ({
   },
 
   seek(seconds) {
-    if (!activeEngine || !Number.isFinite(seconds)) return
+    if (!activeEngine || !Number.isFinite(seconds) || !allowed('seek')) return
     const max = get().duration || seconds
     const clamped = Math.max(0, Math.min(seconds, max))
     activeEngine.seek(clamped)
@@ -309,6 +373,7 @@ export const usePlayer = create<PlayerState>((set, get) => ({
     set({ position: clamped })
     // push the jump to the lock screen now rather than waiting for a timeupdate
     setPositionState(clamped, get().duration, true)
+    emitTransport('seek')
   },
 
   setVolume(v) {
@@ -381,6 +446,7 @@ export const usePlayer = create<PlayerState>((set, get) => ({
       duration: 0,
       videoActive: false,
       videoExpanded: false,
+      videoDocked: false,
       queueExtending: false,
       queueExhausted: false,
       loading: false,
@@ -441,8 +507,30 @@ async function load(
   set: (p: Partial<PlayerState>) => void,
   get: () => PlayerState,
 ) {
-  const track = get().queue[at]
-  if (!track) return
+  const requested = get().queue[at]
+  if (!requested) return
+
+  const token = ++loadSeq
+
+  // Show the track immediately — resolving a playable twin (below) can take a
+  // round trip, and the row the user clicked must light up now, not then.
+  set({ loading: true, error: null, index: at, current: requested, position: 0, duration: 0 })
+
+  /*
+    A YouTube discovery result plays far better as ordinary audio: in the
+    background, on the lock screen, and without a video panel over the UI. See
+    resolvePlayable — it returns the original untouched when there's no match,
+    and for anything that isn't a YouTube track it returns synchronously.
+  */
+  const track = await resolvePlayable(requested)
+  if (token !== loadSeq) return
+  if (track !== requested) {
+    // swap it into the queue as well, so next/prev and the highlighted row all
+    // agree about what is playing
+    const queue = get().queue.slice()
+    queue[at] = track
+    set({ queue, current: track })
+  }
 
   const engine = engineFor(track.source)
   if (!engine) {
@@ -450,26 +538,17 @@ async function load(
     return
   }
 
-  const token = ++loadSeq
-
   if (activeEngine && activeEngine !== engine) {
     activeEngine.teardown()
   }
   activeEngine = engine
 
-  set({
-    loading: true,
-    error: null,
-    index: at,
-    current: track,
-    position: 0,
-    duration: 0,
-    videoActive: engine.needsVideoSurface,
-  })
+  set({ videoActive: engine.needsVideoSurface })
 
   try {
     engine.setVolume(get().muted ? 0 : get().volume)
     engine.setMuted(get().muted)
+    engine.setRate(1) // never carry a room's drift trim into a new track
     await engine.load(track)
     if (token !== loadSeq) return
 
@@ -480,6 +559,7 @@ async function load(
     consecutiveLoadFailures = 0
     set({ loading: false, fromCache: isFromCache(), playing: true })
     updateMediaSession(track, get)
+    emitTransport('load')
 
     // Prefetch the radio tail well before the playhead reaches the end.
     void topUpQueue(set, get)
@@ -516,6 +596,24 @@ async function load(
       void get().next(true)
     }
   }
+}
+
+/**
+ * The live playhead straight from the engine, for code that cannot afford the
+ * store's up-to-250ms staleness (room sync publishes this).
+ */
+export function enginePosition(): number {
+  return activeEngine?.currentTime() ?? usePlayer.getState().position
+}
+
+/** True when the active backend can hold a fractional rate (see PlaybackEngine). */
+export function engineSupportsRateTrim(): boolean {
+  return activeEngine?.supportsRateTrim ?? false
+}
+
+/** Apply a fractional playback rate. Room drift correction only. */
+export function setEngineRate(rate: number) {
+  activeEngine?.setRate(rate)
 }
 
 /** Consecutive failed loads; bounds the auto-skip above. */
@@ -606,12 +704,24 @@ export async function topUpQueue(
   try {
     // over-fetch, because most of a seed's results are already queued
     const recs = await getMatchingRecommendations(seed, want * 2)
-    // filter by identity as well as id — the same song shows up under several
-    // ids across compilations, and an id-only check queues audible duplicates
-    const existing = new Set(get().queue.flatMap((t) => [keyOf(t), identityOf(t)]))
-    const fresh = recs
-      .filter((r) => !existing.has(keyOf(r)) && !existing.has(identityOf(r)))
-      .slice(0, want)
+    /*
+      Three keys, not one. `keyOf` catches the identical row; `identityOf`
+      catches the same recording re-indexed under another id; `titleKeyOf`
+      catches the cover / lofi flip / "- Slowed + Reverb" edition, which shares
+      neither an id nor a credit list with the original and is the reason the
+      queue used to show the same song name three or four times in a row.
+    */
+    const existing = new Set(
+      get().queue.flatMap((t) => [keyOf(t), identityOf(t), titleKeyOf(t)]),
+    )
+    const fresh: Track[] = []
+    for (const r of recs) {
+      if (fresh.length >= want) break
+      const keys = [keyOf(r), identityOf(r), titleKeyOf(r)]
+      if (keys.some((k) => existing.has(k))) continue
+      keys.forEach((k) => existing.add(k))
+      fresh.push(r)
+    }
 
     if (!fresh.length) {
       // don't ask this seed again; the next tail track becomes the next seed

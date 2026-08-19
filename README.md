@@ -36,7 +36,7 @@
 - 📱 **Responsive Floating Pill Player**: A modern mobile floating island player sitting seamlessly above navigation bars across all screen sizes.
 - 📥 **Offline Download & Caching**: Save favorite tracks locally for offline listening using IndexedDB.
 - 🎮 **Heardle Music Trivia**: Test your music knowledge with an interactive daily track guessing game.
-- 👥 **Real-Time Rooms**: Create co-listening rooms to listen synchronously with friends.
+- 👥 **Real-Time Rooms**: Create co-listening rooms to listen synchronously with friends. The person who starts the room hosts it and keeps the controls (optionally opening them to everyone); clocks are measured between devices so playback lands on the same second, and a reload rejoins the same room rather than arriving as a stranger.
 - 🎛️ **Full Audio Equalizer**: Custom bass boost, audio spatializer, and frequency band adjustments.
 - ⌨️ **Keyboard Shortcuts**: Full media control using standard hotkeys (`Space`, `k`, `j`, `l`, `m`, `f`, `s`).
 
