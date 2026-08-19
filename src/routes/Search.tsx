@@ -12,6 +12,7 @@ import { ArtistCard, CollectionCard } from '@/components/Cards'
 import { SectionHeader, EmptyState, ErrorNote, Button } from '@/components/ui'
 import { rankByQuery } from '@/lib/match'
 import { detectMood } from '@/lib/mood'
+import { FOCUS_SEARCH_EVENT } from '@/hooks/useKeyboardShortcuts'
 import { searchMoodTracks, searchMoodCollections } from '@/services/moodSearch'
 import { identityOf } from '@/services/recommendations'
 
@@ -97,6 +98,22 @@ export default function Search() {
     // the visitor wants to read results, not retype the query.
     if (!initial) inputRef.current?.focus()
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  /*
+    Cmd/Ctrl+K (and `/`) land here. Selecting the existing text rather than
+    appending to it is what makes the shortcut usable twice in a row: the
+    second press starts a new search instead of extending the last one.
+  */
+  useEffect(() => {
+    const focus = () => {
+      const el = inputRef.current
+      if (!el) return
+      el.focus()
+      el.select()
+    }
+    window.addEventListener(FOCUS_SEARCH_EVENT, focus)
+    return () => window.removeEventListener(FOCUS_SEARCH_EVENT, focus)
   }, [])
 
   // Back/forward changes ?q= without going through the input — resync it, or

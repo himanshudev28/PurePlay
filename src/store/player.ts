@@ -160,6 +160,42 @@ let activeEngine: PlaybackEngine | null = null
 let sleepHandle: ReturnType<typeof setTimeout> | null = null
 
 /**
+ * Keys already played in the current shuffled pass.
+ *
+ * Shuffle used to be `Math.floor(Math.random() * queue.length)` on every skip,
+ * which is not shuffling — it is rolling a die. Over eight tracks that put the
+ * same song on three times while two never played at all, and with repeat off
+ * it never ended, because a random pick always has somewhere to go. A pass now
+ * plays each track once, in a random order, the way a shuffled deck deals.
+ */
+let shuffleBag = new Set<string>()
+
+/** A new list, or shuffle turned on, starts a fresh pass. */
+function resetShuffleBag() {
+  shuffleBag = new Set()
+}
+
+/**
+ * The next index in the shuffled pass, or -1 when the pass is complete.
+ *
+ * `avoid` is the track playing right now: it must not be dealt again even when
+ * the bag has just been refilled, or repeat-all makes a song follow itself.
+ */
+function nextShuffleIndex(queue: Track[], avoid: number, refill: boolean): number {
+  const pick = (pool: number[]) => (pool.length ? pool[Math.floor(Math.random() * pool.length)] : -1)
+  const unplayed = queue
+    .map((t, i) => (shuffleBag.has(keyOf(t)) || i === avoid ? -1 : i))
+    .filter((i) => i >= 0)
+
+  if (unplayed.length) return pick(unplayed)
+  if (!refill) return -1
+
+  resetShuffleBag()
+  const all = queue.map((_, i) => i).filter((i) => i !== avoid)
+  return pick(all.length ? all : [avoid])
+}
+
+/**
  * Monotonic token. Every load() captures the value at entry and bails after each
  * await if a newer load has started — otherwise a slow load started first can
  * resolve last and leave the engine playing a different track than the UI shows.
@@ -266,6 +302,7 @@ export const usePlayer = create<PlayerState>((set, get) => ({
     if (!tracks.length || !allowed('load')) return
     set({ queue: tracks, queueExhausted: false })
     history.length = 0
+    resetShuffleBag()
     await load(startAt, set, get)
   },
 
@@ -278,6 +315,7 @@ export const usePlayer = create<PlayerState>((set, get) => ({
     if (!tracks.length || !allowed('load')) return
     set({ shuffle: true, queue: tracks, queueExhausted: false })
     history.length = 0
+    resetShuffleBag()
     await load(Math.floor(Math.random() * tracks.length), set, get)
   },
 
@@ -290,6 +328,7 @@ export const usePlayer = create<PlayerState>((set, get) => ({
     if (found === -1) {
       set({ queue: [track], queueExhausted: false })
       history.length = 0
+      resetShuffleBag()
       await load(0, set, get)
       return
     }
@@ -362,6 +401,9 @@ export const usePlayer = create<PlayerState>((set, get) => ({
 
     let target: number
     if (shuffle) {
+      const currentKey = queue[index] ? keyOf(queue[index]) : null
+      if (currentKey) shuffleBag.add(currentKey)
+
       if (queue.length === 1) {
         // a single-track queue with shuffle on must still respect repeat
         if (repeat === 'off' && auto) {
@@ -372,8 +414,18 @@ export const usePlayer = create<PlayerState>((set, get) => ({
         }
         target = index
       } else {
-        do target = Math.floor(Math.random() * queue.length)
-        while (target === index)
+        // Repeat-all deals a fresh pass; otherwise the pass ending is the
+        // queue ending, exactly as it is for a sequential one.
+        target = nextShuffleIndex(queue, index, repeat === 'all')
+        if (target < 0) {
+          activeEngine?.pause()
+          activeEngine?.seek(0)
+          set({ playing: false, position: 0 })
+          resetShuffleBag()
+          return
+        }
+        const picked = queue[target]
+        if (picked) shuffleBag.add(keyOf(picked))
       }
     } else {
       target = index + 1
@@ -459,7 +511,13 @@ export const usePlayer = create<PlayerState>((set, get) => ({
     set({ muted, ...(!muted && volume === 0 ? { volume: 0.5 } : {}) })
   },
 
-  toggleShuffle: () => set((s) => ({ shuffle: !s.shuffle })),
+  toggleShuffle: () =>
+    set((s) => {
+      // Turning it on deals a new pass; turning it off drops one that's half
+      // dealt, so the next time it goes on nothing is stale.
+      resetShuffleBag()
+      return { shuffle: !s.shuffle }
+    }),
 
   cycleRepeat: () =>
     set((s) => ({ repeat: s.repeat === 'off' ? 'all' : s.repeat === 'all' ? 'one' : 'off' })),
