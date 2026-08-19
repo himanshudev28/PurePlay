@@ -36,7 +36,10 @@ export function RoomStatus() {
   // sit above the player bar when there is one
   // Keyed on `lg`, not `sm`: the mobile tab bar is `lg:hidden`, so a toast
   // lifted only to `sm:bottom-6` sat behind it on every tablet-width screen.
-  const bottom = hasTrack && viewMode === 'bar' ? 'bottom-[150px] lg:bottom-[112px]' : 'bottom-[88px] lg:bottom-6'
+  const bottom =
+    hasTrack && viewMode === 'bar'
+      ? 'bottom-[calc(150px+env(safe-area-inset-bottom,0px))] lg:bottom-[112px]'
+      : 'bottom-[calc(88px+env(safe-area-inset-bottom,0px))] lg:bottom-6'
   const onRoomPage = pathname.startsWith('/room')
 
   return (
@@ -47,7 +50,7 @@ export function RoomStatus() {
           title={isHost ? 'You are hosting this room' : 'You are listening in a room'}
           // Below the sticky top bar, not on top of it: at top-3 this pill
           // landed exactly on the bar's search button and swallowed its taps.
-          className="fixed top-16 right-3 z-40 flex items-center gap-1.5 rounded-full border border-ink-700 bg-ink-900/90 px-3 py-1.5 text-xs font-medium text-white shadow-lg backdrop-blur transition hover:border-accent lg:right-4"
+          className="fixed top-[calc(4rem+env(safe-area-inset-top,0px))] right-[max(0.75rem,env(safe-area-inset-right,0px))] z-40 flex items-center gap-1.5 rounded-full border border-ink-700 bg-ink-900/90 px-3 py-1.5 text-xs font-medium text-white shadow-lg backdrop-blur transition hover:border-accent lg:right-4"
         >
           {hostAway ? (
             <WifiOff size={12} className="text-amber-300" />

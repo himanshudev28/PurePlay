@@ -112,13 +112,15 @@ export function PlaybackHost() {
     YouTube's Terms of Service require the player stay visible during playback,
     so `hidden` only ever applies when no YouTube track is loaded at all.
   */
-  const floatOffset = barVisible ? 'bottom-[178px] sm:bottom-[116px]' : 'bottom-[92px] sm:bottom-6'
+  const floatOffset = barVisible
+    ? 'bottom-[calc(178px+env(safe-area-inset-bottom,0px))] sm:bottom-[116px]'
+    : 'bottom-[calc(92px+env(safe-area-inset-bottom,0px))] sm:bottom-6'
   const placement = !videoActive
     ? 'pointer-events-none fixed h-0 w-0 overflow-hidden opacity-0'
     : docked && fullPlayerOpen
       ? 'fixed left-1/2 top-1/2 z-[60] aspect-video w-[min(92vw,780px)] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl border border-white/15 bg-black shadow-2xl'
       : clsx(
-          'fixed right-3 z-40 aspect-video overflow-hidden border border-ink-700 bg-black shadow-2xl sm:right-4',
+          'fixed right-[max(0.75rem,env(safe-area-inset-right,0px))] z-40 aspect-video overflow-hidden border border-ink-700 bg-black shadow-2xl sm:right-[max(1rem,env(safe-area-inset-right,0px))]',
           floatOffset,
           expanded
             ? 'w-[min(356px,calc(100vw-1.5rem))] rounded-xl sm:w-[390px]'

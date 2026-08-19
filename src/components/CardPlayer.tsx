@@ -25,7 +25,7 @@ export function CardPlayer() {
       className={clsx(
         // On phones the bottom tab bar lives in the same corner — sit above it
         // and never exceed the viewport width, or navigation becomes unreachable.
-        'fixed bottom-[calc(76px+env(safe-area-inset-bottom,0px))] lg:bottom-6 right-4 lg:right-6 z-40 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-3xl border shadow-2xl transition-all duration-300',
+        'fixed bottom-[calc(76px+env(safe-area-inset-bottom,0px))] lg:bottom-6 right-[max(1rem,env(safe-area-inset-right,0px))] lg:right-6 z-40 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-3xl border shadow-2xl transition-all duration-300',
         playerTheme === 'neumorphic'
           ? 'bg-[#d6cfc4] text-stone-800 border-[#c8c0b4]'
           : playerTheme === 'vibrant'

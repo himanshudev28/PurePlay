@@ -399,6 +399,68 @@
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
+   SAFE AREAS
+   ══════════════════════════════════════════════════════════════════════════
+
+   The viewport is `viewport-fit=cover` and the iOS status bar style is
+   `black-translucent`, so once the app is installed to the home screen the web
+   view genuinely extends underneath the notch, the status bar and the home
+   indicator. Anything pinned to a screen edge that ignores env() therefore
+   renders *behind the hardware* — which is what put the menu and search buttons
+   under an iPhone 13's notch.
+
+   `max(inset, fallback)` throughout: browsers with no cutout report 0, and the
+   fallback keeps the ordinary padding the design already wanted.
+
+   These are unlayered so they beat the Tailwind padding/inset utilities on the
+   same elements no matter how those sort.
+   ────────────────────────────────────────────────────────────────────────── */
+
+/* The app header. Also carries the desktop rail's left offset, because the
+   two compete for padding-left and only one can win. */
+.topbar-safe {
+  padding-top: max(env(safe-area-inset-top, 0px), 0.75rem);
+  padding-left: max(env(safe-area-inset-left, 0px), 1rem);
+  padding-right: max(env(safe-area-inset-right, 0px), 1rem);
+}
+
+@media (min-width: 64rem) {
+  .topbar-safe {
+    padding-left: max(env(safe-area-inset-left, 0px), 92px);
+  }
+}
+
+/* Floating chrome that spans the screen horizontally — the player pill, the
+   queue sheet. In landscape the cutout sits on one of the short edges, so it is
+   the left/right insets that matter here, not the top one. */
+.inset-x-safe {
+  left: max(0.75rem, env(safe-area-inset-left, 0px));
+  right: max(0.75rem, env(safe-area-inset-right, 0px));
+}
+
+@media (min-width: 40rem) {
+  .inset-x-safe {
+    left: max(1.5rem, env(safe-area-inset-left, 0px));
+    right: max(1.5rem, env(safe-area-inset-right, 0px));
+  }
+}
+
+/* Bars pinned to the bottom edge: clear the home indicator, and the cutout in
+   landscape. */
+.tabbar-safe {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 0.25rem);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+/* The slide-in navigation drawer runs the full height of the screen. */
+.drawer-safe {
+  padding-top: max(env(safe-area-inset-top, 0px), 1rem);
+  padding-left: max(env(safe-area-inset-left, 0px), 1rem);
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 1rem);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
    LIQUID GLASS
    ══════════════════════════════════════════════════════════════════════════
 

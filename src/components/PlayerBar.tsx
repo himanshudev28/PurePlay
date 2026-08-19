@@ -173,7 +173,7 @@ export function PlayerBar() {
         {queueOpen && <QueuePanel onClose={() => setQueueOpen(false)} />}
         <div
           ref={barRef}
-          className="fixed left-3 right-3 sm:left-6 sm:right-6 bottom-[calc(60px+env(safe-area-inset-bottom,0px))] lg:bottom-4 z-40 mx-auto max-w-5xl overflow-hidden rounded-3xl sm:rounded-full shadow-2xl transition-all duration-300"
+          className="inset-x-safe fixed bottom-[calc(60px+env(safe-area-inset-bottom,0px))] lg:bottom-4 z-40 mx-auto max-w-5xl overflow-hidden rounded-3xl sm:rounded-full shadow-2xl transition-all duration-300"
           style={{ background: '#d6cfc4', boxShadow: '8px 8px 20px #b8a990, -8px -8px 20px #f0e8da, 0 10px 25px rgba(0,0,0,0.15)' }}
         >
           {/* Seek bar */}
@@ -228,7 +228,7 @@ export function PlayerBar() {
         {queueOpen && <QueuePanel onClose={() => setQueueOpen(false)} />}
         <div
           ref={barRef}
-          className="fixed left-3 right-3 sm:left-6 sm:right-6 bottom-[calc(60px+env(safe-area-inset-bottom,0px))] lg:bottom-4 z-40 mx-auto max-w-5xl overflow-hidden rounded-3xl sm:rounded-full text-white shadow-2xl transition-all duration-300"
+          className="inset-x-safe fixed bottom-[calc(60px+env(safe-area-inset-bottom,0px))] lg:bottom-4 z-40 mx-auto max-w-5xl overflow-hidden rounded-3xl sm:rounded-full text-white shadow-2xl transition-all duration-300"
           style={{ background: 'linear-gradient(90deg, #3b0764 0%, #6d28d9 50%, #7c3aed 100%)', boxShadow: '0 12px 30px rgba(109, 40, 217, 0.4)' }}
         >
           <div className="group relative h-1.5 cursor-pointer">
@@ -277,7 +277,7 @@ export function PlayerBar() {
         {queueOpen && <QueuePanel onClose={() => setQueueOpen(false)} />}
         <div
           ref={barRef}
-          className="fixed left-3 right-3 sm:left-6 sm:right-6 bottom-[calc(60px+env(safe-area-inset-bottom,0px))] lg:bottom-4 z-40 mx-auto max-w-5xl overflow-hidden rounded-3xl sm:rounded-full bg-gray-950 border border-gray-800 text-white shadow-2xl transition-all duration-300"
+          className="inset-x-safe fixed bottom-[calc(60px+env(safe-area-inset-bottom,0px))] lg:bottom-4 z-40 mx-auto max-w-5xl overflow-hidden rounded-3xl sm:rounded-full bg-gray-950 border border-gray-800 text-white shadow-2xl transition-all duration-300"
         >
           <div className="group relative h-1 cursor-pointer">
             <span aria-hidden className="absolute inset-0 bg-gray-800" />
@@ -322,7 +322,7 @@ export function PlayerBar() {
         {queueOpen && <QueuePanel onClose={() => setQueueOpen(false)} />}
         <div
           ref={barRef}
-          className="fixed left-3 right-3 sm:left-6 sm:right-6 bottom-[calc(60px+env(safe-area-inset-bottom,0px))] lg:bottom-4 z-40 mx-auto max-w-5xl overflow-hidden rounded-3xl sm:rounded-full text-white shadow-2xl transition-all duration-300"
+          className="inset-x-safe fixed bottom-[calc(60px+env(safe-area-inset-bottom,0px))] lg:bottom-4 z-40 mx-auto max-w-5xl overflow-hidden rounded-3xl sm:rounded-full text-white shadow-2xl transition-all duration-300"
           style={{
             background: 'linear-gradient(90deg, #4a0e17 0%, #881337 50%, #9f1239 100%)',
             boxShadow: '0 12px 30px rgba(244, 63, 94, 0.35), 0 0 0 1px rgba(254, 205, 211, 0.2)',
@@ -374,7 +374,7 @@ export function PlayerBar() {
         {queueOpen && <QueuePanel onClose={() => setQueueOpen(false)} />}
         <div
           ref={barRef}
-          className="fixed left-3 right-3 sm:left-6 sm:right-6 bottom-[calc(60px+env(safe-area-inset-bottom,0px))] lg:bottom-4 z-40 mx-auto max-w-5xl overflow-hidden rounded-3xl sm:rounded-full text-white shadow-2xl transition-all duration-300"
+          className="inset-x-safe fixed bottom-[calc(60px+env(safe-area-inset-bottom,0px))] lg:bottom-4 z-40 mx-auto max-w-5xl overflow-hidden rounded-3xl sm:rounded-full text-white shadow-2xl transition-all duration-300"
           style={{
             background: 'linear-gradient(90deg, #7c2d12 0%, #c2410c 45%, #f97316 80%, #f59e0b 100%)',
             boxShadow: '0 12px 30px rgba(249, 115, 22, 0.4), 0 0 0 1px rgba(254, 215, 170, 0.25)',
@@ -426,7 +426,7 @@ export function PlayerBar() {
         {queueOpen && <QueuePanel onClose={() => setQueueOpen(false)} />}
         <div
           ref={barRef}
-          className="fixed left-3 right-3 sm:left-6 sm:right-6 bottom-[calc(60px+env(safe-area-inset-bottom,0px))] lg:bottom-4 z-40 mx-auto max-w-5xl overflow-hidden rounded-3xl sm:rounded-full text-white shadow-2xl transition-all duration-300"
+          className="inset-x-safe fixed bottom-[calc(60px+env(safe-area-inset-bottom,0px))] lg:bottom-4 z-40 mx-auto max-w-5xl overflow-hidden rounded-3xl sm:rounded-full text-white shadow-2xl transition-all duration-300"
           style={{
             background: 'linear-gradient(90deg, #022c22 0%, #064e3b 45%, #0f766e 85%, #06b6d4 100%)',
             boxShadow: '0 12px 30px rgba(6, 182, 212, 0.35), 0 0 0 1px rgba(103, 232, 249, 0.25)',
@@ -478,7 +478,7 @@ export function PlayerBar() {
         {queueOpen && <QueuePanel onClose={() => setQueueOpen(false)} />}
         <div
           ref={barRef}
-          className="fixed left-3 right-3 sm:left-6 sm:right-6 bottom-[calc(60px+env(safe-area-inset-bottom,0px))] lg:bottom-4 z-40 mx-auto max-w-5xl overflow-hidden rounded-3xl sm:rounded-full text-white shadow-2xl transition-all duration-300"
+          className="inset-x-safe fixed bottom-[calc(60px+env(safe-area-inset-bottom,0px))] lg:bottom-4 z-40 mx-auto max-w-5xl overflow-hidden rounded-3xl sm:rounded-full text-white shadow-2xl transition-all duration-300"
           style={{
             background: 'linear-gradient(90deg, #090d16 0%, #1e1b4b 50%, #4338ca 100%)',
             boxShadow: '0 12px 30px rgba(99, 102, 241, 0.4), 0 0 0 1px rgba(199, 210, 254, 0.25)',
@@ -532,7 +532,7 @@ export function PlayerBar() {
           ref={barRef}
           // lg-glass-strong carries the blur, sheen and bevelled edge (index.css).
           // The accent halo is the one thing specific to this surface.
-          className="lg-glass-strong fixed left-3 right-3 sm:left-6 sm:right-6 bottom-[calc(60px+env(safe-area-inset-bottom,0px))] lg:bottom-4 z-40 mx-auto max-w-5xl overflow-hidden rounded-3xl text-white transition-all duration-300 sm:rounded-full"
+          className="lg-glass-strong inset-x-safe fixed bottom-[calc(60px+env(safe-area-inset-bottom,0px))] lg:bottom-4 z-40 mx-auto max-w-5xl overflow-hidden rounded-3xl text-white transition-all duration-300 sm:rounded-full"
           style={{
             boxShadow:
               'inset 0 1px 0 rgba(255,255,255,0.38), inset 0 -1px 0 rgba(255,255,255,0.06), 0 26px 60px -22px rgba(2,6,23,0.95), 0 0 34px -10px rgba(56,189,248,0.35)',
@@ -595,7 +595,7 @@ export function PlayerBar() {
 
       <div
         ref={barRef}
-        className="fixed left-3 right-3 sm:left-6 sm:right-6 bottom-[calc(60px+env(safe-area-inset-bottom,0px))] lg:bottom-4 z-40 mx-auto max-w-5xl overflow-hidden rounded-3xl sm:rounded-full border border-ink-800 glass shadow-2xl transition-all duration-300"
+        className="inset-x-safe fixed bottom-[calc(60px+env(safe-area-inset-bottom,0px))] lg:bottom-4 z-40 mx-auto max-w-5xl overflow-hidden rounded-3xl sm:rounded-full border border-ink-800 glass shadow-2xl transition-all duration-300"
       >
         <div className="group relative h-1.5 cursor-pointer">
           <span aria-hidden className="absolute inset-0 rounded-t bg-ink-700" />
@@ -704,7 +704,7 @@ function QueuePanel({ onClose }: { onClose: () => void }) {
     <aside
       ref={panelRef}
       aria-label="Play queue"
-      className="fixed right-3 left-3 sm:left-auto sm:right-6 z-40 flex max-h-[min(60dvh,26rem)] w-auto sm:w-96 flex-col rounded-2xl border border-ink-800 glass shadow-2xl"
+      className="inset-x-safe fixed z-40 flex max-h-[min(60dvh,26rem)] w-auto flex-col sm:left-auto sm:w-96 rounded-2xl border border-ink-800 glass shadow-2xl"
       style={{ bottom: 'calc(80px + env(safe-area-inset-bottom, 0px))' }}
     >
       <header className="flex items-center justify-between border-b border-ink-800 px-4 py-3">

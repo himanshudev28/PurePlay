@@ -100,7 +100,7 @@ export function Shell({ children }: { children: ReactNode }) {
       {/* top bar */}
       <header
         data-shell="topbar"
-        className="sticky top-0 z-20 flex items-center gap-3 px-4 py-3 lg:pl-[92px] backdrop-blur-xl transition-colors duration-300"
+        className="topbar-safe sticky top-0 z-20 flex items-center gap-3 pb-3 backdrop-blur-xl transition-colors duration-300"
         style={{
           background: 'var(--shell-topbar-bg, rgba(12,12,14,0.75))',
           borderBottom: '1px solid var(--shell-border, #17171b)',
@@ -155,7 +155,7 @@ export function Shell({ children }: { children: ReactNode }) {
             aria-label="Navigation"
             tabIndex={-1}
             data-shell="drawer"
-            className="absolute inset-y-0 left-0 w-[min(16rem,80vw)] p-4 outline-none transition-colors duration-300"
+            className="drawer-safe absolute inset-y-0 left-0 w-[min(16rem,80vw)] overflow-y-auto pr-4 outline-none transition-colors duration-300"
             style={{
               background: 'var(--shell-sidebar-bg, #0c0c0e)',
               borderRight: '1px solid var(--shell-border, #17171b)',
@@ -205,7 +205,12 @@ export function Shell({ children }: { children: ReactNode }) {
       )}
 
       {/* main content — extra bottom padding for mobile bottom-nav + player bar */}
-      <main className={clsx('lg:pl-[76px]', barVisible ? 'pb-40 lg:pb-32' : 'pb-24 lg:pb-12')}>
+      <main
+        className={clsx(
+          'pl-[env(safe-area-inset-left,0px)] pr-[env(safe-area-inset-right,0px)] lg:pl-[76px]',
+          barVisible ? 'pb-40 lg:pb-32' : 'pb-24 lg:pb-12',
+        )}
+      >
         <div className="mx-auto max-w-[1500px] px-4 py-6 sm:px-6">{children}</div>
       </main>
 
@@ -213,9 +218,8 @@ export function Shell({ children }: { children: ReactNode }) {
       <nav
         aria-label="Primary"
         data-shell="tabbar"
-        className="fixed inset-x-0 bottom-0 z-40 flex items-center justify-around lg:hidden backdrop-blur-2xl transition-colors duration-300"
+        className="tabbar-safe fixed inset-x-0 bottom-0 z-40 flex items-center justify-around lg:hidden backdrop-blur-2xl transition-colors duration-300"
         style={{
-          paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 0.25rem)',
           borderTop: '1px solid var(--shell-border, #17171b)',
           background: 'var(--shell-topbar-bg, rgba(12,12,14,0.85))',
         }}
