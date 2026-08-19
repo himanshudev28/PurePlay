@@ -2,8 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Track } from '@/types'
 import { sourceFor } from '@/services'
 import { isDownloaded, saveDownload, removeDownload, keyOf } from '@/lib/db'
+import { saveTrackToDevice } from '@/lib/saveFile'
 
 type Status = 'idle' | 'downloading' | 'done' | 'error'
+
+/** The separate, visible-to-the-device save. See `saveTrackToDevice`. */
+type SaveStatus = 'idle' | 'saving' | 'saved' | 'shared' | 'error'
 
 /**
  * IndexedDB is not reactive, so a tiny pub/sub keeps every row showing the same
@@ -98,6 +102,42 @@ export function useDownloads(track: Track | null) {
     }
   }, [track, supported, key])
 
+  /*
+    Saving a file to the device, which is a different thing from the offline
+    copy above: that one lives in IndexedDB and only this app can see it, and
+    people reasonably read a download button as "put the song on my phone".
+  */
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
+  const saveTimer = useRef<number | null>(null)
+  useEffect(() => () => {
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+  }, [])
+
+  const saveToDevice = useCallback(async () => {
+    if (!track || !supported) return
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current)
+      saveTimer.current = null
+    }
+    setSaveStatus('saving')
+    try {
+      const how = await saveTrackToDevice(track)
+      if (!mounted.current) return
+      setSaveStatus(how === 'shared' ? 'shared' : 'saved')
+    } catch (e) {
+      console.error('[save-to-device]', track.title, e)
+      if (!mounted.current) return
+      setError(e instanceof Error ? e.message : 'Could not save the file')
+      setSaveStatus('error')
+    } finally {
+      // The result label is transient: the row goes back to offering the save.
+      saveTimer.current = window.setTimeout(() => {
+        saveTimer.current = null
+        if (mounted.current) setSaveStatus('idle')
+      }, 3000)
+    }
+  }, [track, supported])
+
   const remove = useCallback(async () => {
     if (!track) return
     await removeDownload(track)
@@ -105,7 +145,7 @@ export function useDownloads(track: Track | null) {
     notify()
   }, [track])
 
-  return { status, progress, error, download, remove, supported, key }
+  return { status, progress, error, download, remove, supported, key, saveStatus, saveToDevice }
 }
 
 export { notify as notifyDownloadsChanged }

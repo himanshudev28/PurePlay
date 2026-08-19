@@ -3,7 +3,7 @@ import {
   ChevronDown, Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1,
   Heart, Share2, Music2, Video, FileText, Check, ListMusic,
   Download, Sparkles, Info, Loader2, Maximize2, Flower2, Sun, MoreVertical, Trash2,
-  Moon, ChevronRight,
+  Moon, ChevronRight, HardDriveDownload,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { usePlayer } from '@/store/player'
@@ -63,8 +63,10 @@ export function FullPlayer() {
   // Back / the edge-swipe gesture dismisses the player, like any other screen.
   useOverlayHistory(open, closeFullPlayer, 'full-player')
 
-  const { status: downloadStatus, download, remove: removeDownload, supported: downloadSupported } =
-    useDownloads(current)
+  const {
+    status: downloadStatus, download, remove: removeDownload, supported: downloadSupported,
+    saveStatus, saveToDevice,
+  } = useDownloads(current)
 
   useEffect(() => {
     if (!current) return
@@ -658,9 +660,34 @@ export function FullPlayer() {
                   ? 'Downloading…'
                   : downloadStatus === 'done'
                     ? 'Remove download'
-                    : 'Download for offline',
+                    : 'Keep offline in app',
               active: downloadStatus === 'done',
               onClick: () => (downloadStatus === 'done' ? void removeDownload() : void download()),
+            })}
+          {/*
+            Two different saves, named for where the file ends up. The offline
+            one is invisible outside the app, which is exactly what people hit
+            it expecting *not* to be the case.
+          */}
+          {downloadSupported &&
+            MenuItem({
+              icon: saveStatus === 'saving' ? Loader2 : HardDriveDownload,
+              spinning: saveStatus === 'saving',
+              label:
+                saveStatus === 'saving'
+                  ? 'Saving file…'
+                  : saveStatus === 'saved'
+                    ? 'Saved to your device'
+                    : saveStatus === 'shared'
+                      ? 'Sent to your device'
+                      : saveStatus === 'error'
+                        ? 'Could not save — try again'
+                        : 'Save to device',
+              active: saveStatus === 'saved' || saveStatus === 'shared',
+              // Stays open so the outcome is visible: the whole complaint about
+              // the other download is that nothing said where the file went.
+              keepOpen: true,
+              onClick: () => void saveToDevice(),
             })}
           {MenuItem({
             icon: shareState === 'copied' ? Check : Share2,

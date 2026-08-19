@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  Heart, Play, Pause, Download, Check, Loader2, ListPlus, ListMusic, Plus, Trash2,
+  Heart, Play, Pause, Download, Check, Loader2, ListPlus, ListMusic, Plus, Trash2, HardDriveDownload,
   MoreVertical, X, ChevronLeft,
 } from 'lucide-react'
 import clsx from 'clsx'
@@ -172,6 +172,9 @@ function TrackSheet({
   status,
   supported,
   onDownload,
+  saveLabel,
+  saveStatus,
+  onSaveToDevice,
 }: {
   track: Track
   onRemove?: () => void
@@ -179,6 +182,9 @@ function TrackSheet({
   status: ReturnType<typeof useDownloads>['status']
   supported: boolean
   onDownload: () => void
+  saveLabel: string
+  saveStatus: ReturnType<typeof useDownloads>['saveStatus']
+  onSaveToDevice: () => void
 }) {
   const [open, setOpen] = useState(false)
   const [picking, setPicking] = useState(false)
@@ -292,6 +298,23 @@ function TrackSheet({
                     }}
                   />
                 )}
+                {supported && (
+                  <SheetItem
+                    icon={
+                      saveStatus === 'saving' ? (
+                        <Loader2 size={17} className="animate-spin" />
+                      ) : saveStatus === 'saved' || saveStatus === 'shared' ? (
+                        <Check size={17} className="text-accent" />
+                      ) : (
+                        <HardDriveDownload size={17} />
+                      )
+                    }
+                    label={saveLabel}
+                    // Deliberately does NOT close: a multi-megabyte fetch takes
+                    // a moment, and the label is the only thing that says so.
+                    onClick={onSaveToDevice}
+                  />
+                )}
                 <SheetItem
                   icon={<ListMusic size={17} />}
                   label="Add to playlist"
@@ -345,7 +368,9 @@ export function TrackRow({
   const isFavorite = useLibrary((s) => s.isFavorite)
   const toggleFavorite = useLibrary((s) => s.toggleFavorite)
 
-  const { status, progress, error: downloadError, download, remove, supported } = useDownloads(track)
+  const {
+    status, progress, error: downloadError, download, remove, supported, saveStatus, saveToDevice,
+  } = useDownloads(track)
 
   const isCurrent = current ? keyOf(current) === keyOf(track) : false
   const isPlaying = isCurrent && playing
@@ -358,9 +383,20 @@ export function TrackRow({
         ? `Downloading… ${Math.round(progress * 100)}%`
         : status === 'error'
           ? (downloadError ?? 'Download failed — click to retry')
-          : 'Download for offline'
+          : 'Keep offline in app'
 
   const onDownload = () => (status === 'done' ? void remove() : void download())
+
+  const saveLabel =
+    saveStatus === 'saving'
+      ? 'Saving file…'
+      : saveStatus === 'saved'
+        ? 'Saved to your device'
+        : saveStatus === 'shared'
+          ? 'Sent to your device'
+          : saveStatus === 'error'
+            ? 'Could not save — tap to retry'
+            : 'Save to device'
 
   return (
     <div
@@ -457,6 +493,31 @@ export function TrackRow({
             </button>
           )}
 
+          {supported && (
+            <button
+              onClick={() => void saveToDevice()}
+              title={saveLabel}
+              aria-label={`${saveLabel}: ${track.title}`}
+              aria-busy={saveStatus === 'saving' || undefined}
+              className={clsx(
+                'rounded-full p-2 transition hover:bg-ink-700',
+                saveStatus === 'saved' || saveStatus === 'shared'
+                  ? 'text-accent'
+                  : saveStatus === 'error'
+                    ? 'text-accent-soft'
+                    : 'text-ink-400 row-action',
+              )}
+            >
+              {saveStatus === 'saving' ? (
+                <Loader2 size={15} className="animate-spin" />
+              ) : saveStatus === 'saved' || saveStatus === 'shared' ? (
+                <Check size={15} />
+              ) : (
+                <HardDriveDownload size={15} />
+              )}
+            </button>
+          )}
+
           <AddToPlaylistMenu track={track} />
 
           {onRemove ? (
@@ -485,6 +546,9 @@ export function TrackRow({
             track={track}
             onRemove={onRemove}
             downloadLabel={downloadLabel}
+            saveLabel={saveLabel}
+            saveStatus={saveStatus}
+            onSaveToDevice={() => void saveToDevice()}
             status={status}
             supported={supported}
             onDownload={onDownload}

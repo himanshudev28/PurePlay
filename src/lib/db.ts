@@ -144,6 +144,13 @@ export async function saveDownload(
   ])
 }
 
+/** The stored audio for an offline track, or null when it isn't cached. */
+export async function offlineBlob(track: Track): Promise<{ blob: Blob; mime: string } | null> {
+  const d = await db()
+  const rec = await d.get('blobs', keyOf(track))
+  return rec ? { blob: rec.blob, mime: rec.mime } : null
+}
+
 /** Object URL for an offline track, or null when it isn't cached. */
 export async function offlineUrl(track: Track): Promise<string | null> {
   const d = await db()
