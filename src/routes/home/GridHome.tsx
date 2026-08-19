@@ -3,9 +3,10 @@ import { Play, Shuffle, RefreshCw, ChevronLeft, ChevronRight, ListMusic, Calenda
 import clsx from 'clsx'
 import { usePlayer } from '@/store/player'
 import { useLibrary } from '@/store/library'
-import { TrackCard, CollectionCard, ArtistCard } from '@/components/Cards'
+import { CollectionCard, ArtistCard } from '@/components/Cards'
+import { SongShelfItems } from '@/components/SongShelf'
 import { QuickPicks } from '@/components/QuickPicks'
-import { Skeleton, Button, ErrorNote, Artwork } from '@/components/ui'
+import { Button, ErrorNote, Artwork } from '@/components/ui'
 import { CATEGORIES, greeting, type HomeFeed } from './useHomeFeed'
 
 /**
@@ -177,9 +178,7 @@ export default function GridHome({ feed }: { feed: HomeFeed }) {
       {/* Recently played */}
       {recent.length > 0 && (
         <Row title="Jump back in">
-          {recent.slice(0, 12).map((t) => (
-            <TrackCard key={`recent-${t.source}-${t.id}`} track={t} queue={recent} />
-          ))}
+          <SongShelfItems tracks={recent.slice(0, 12)} queue={recent} keyPrefix="recent-" />
         </Row>
       )}
 
@@ -204,12 +203,8 @@ export default function GridHome({ feed }: { feed: HomeFeed }) {
           </>
         }
       >
-        {picksLoading && !picks.length ? (
-          Array.from({ length: 8 }, (_, i) => (
-            <Skeleton key={i} className="h-[212px] w-[152px] shrink-0 sm:w-[168px]" />
-          ))
-        ) : picks.length ? (
-          picks.map((t) => <TrackCard key={`picks-${t.source}-${t.id}`} track={t} queue={picks} />)
+        {picksLoading || picks.length ? (
+          <SongShelfItems tracks={picks} keyPrefix="picks-" loading={picksLoading} />
         ) : (
           <p className="py-6 text-sm text-ink-400">
             {favorites.length || recent.length
@@ -248,13 +243,7 @@ export default function GridHome({ feed }: { feed: HomeFeed }) {
           </>
         }
       >
-        {loading
-          ? Array.from({ length: 8 }, (_, i) => (
-              <Skeleton key={i} className="h-[212px] w-[152px] shrink-0 sm:w-[168px]" />
-            ))
-          : trendingShelf.map((t) => (
-              <TrackCard key={`${t.source}-${t.id}`} track={t} queue={trendingShelf} />
-            ))}
+        <SongShelfItems tracks={trendingShelf} loading={loading} />
       </Row>
 
       {/* Popular artists */}
@@ -286,9 +275,7 @@ export default function GridHome({ feed }: { feed: HomeFeed }) {
             </Button>
           }
         >
-          {shelf.items.map((t) => (
-            <TrackCard key={`${shelf.title}-${t.source}-${t.id}`} track={t} queue={shelf.items} />
-          ))}
+          <SongShelfItems tracks={shelf.items} keyPrefix={`${shelf.title}-`} />
         </Row>
       ))}
 

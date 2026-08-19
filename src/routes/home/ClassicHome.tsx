@@ -3,7 +3,8 @@ import { Play, Sparkles, ListMusic, Shuffle, RefreshCw, CalendarClock } from 'lu
 import clsx from 'clsx'
 import { usePlayer } from '@/store/player'
 import { useLibrary } from '@/store/library'
-import { TrackCard, CollectionCard, ArtistCard } from '@/components/Cards'
+import { CollectionCard, ArtistCard } from '@/components/Cards'
+import { SongShelfItems } from '@/components/SongShelf'
 import { TrackRow } from '@/components/TrackRow'
 import { SectionHeader, Skeleton, Button, ErrorNote, Artwork } from '@/components/ui'
 import { CATEGORIES, greeting, type HomeFeed } from './useHomeFeed'
@@ -142,9 +143,7 @@ export default function ClassicHome({ feed }: { feed: HomeFeed }) {
         <section>
           <SectionHeader title="Jump back in" />
           <div className="shelf">
-            {recent.slice(0, 12).map((t) => (
-              <TrackCard key={`recent-${t.source}-${t.id}`} track={t} queue={recent} />
-            ))}
+            <SongShelfItems tracks={recent.slice(0, 12)} queue={recent} keyPrefix="recent-" />
           </div>
         </section>
       )}
@@ -184,14 +183,8 @@ export default function ClassicHome({ feed }: { feed: HomeFeed }) {
           </div>
         </div>
         <div className="shelf">
-          {picksLoading && !picks.length ? (
-            Array.from({ length: 8 }, (_, i) => (
-              <Skeleton key={i} className="h-[212px] w-[152px] shrink-0 sm:w-[168px]" />
-            ))
-          ) : picks.length ? (
-            picks.map((t) => (
-              <TrackCard key={`picks-${t.source}-${t.id}`} track={t} queue={picks} />
-            ))
+          {picksLoading || picks.length ? (
+            <SongShelfItems tracks={picks} keyPrefix="picks-" loading={picksLoading} />
           ) : (
             <p className="py-6 text-sm text-ink-400">
               Nothing new to suggest right now — try Refresh in a moment.
@@ -244,11 +237,7 @@ export default function ClassicHome({ feed }: { feed: HomeFeed }) {
           }
         />
         <div className="shelf">
-          {loading
-            ? Array.from({ length: 8 }, (_, i) => (
-                <Skeleton key={i} className="h-[212px] w-[152px] shrink-0 sm:w-[168px]" />
-              ))
-            : trending.slice(0, 20).map((t) => <TrackCard key={`${t.source}-${t.id}`} track={t} queue={trending} />)}
+          <SongShelfItems tracks={trending.slice(0, 20)} queue={trending} loading={loading} />
         </div>
       </section>
 
@@ -276,9 +265,7 @@ export default function ClassicHome({ feed }: { feed: HomeFeed }) {
             }
           />
           <div className="shelf">
-            {shelf.items.map((t) => (
-              <TrackCard key={`${shelf.title}-${t.source}-${t.id}`} track={t} queue={shelf.items} />
-            ))}
+            <SongShelfItems tracks={shelf.items} keyPrefix={`${shelf.title}-`} />
           </div>
         </section>
       ))}
