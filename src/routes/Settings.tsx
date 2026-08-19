@@ -157,11 +157,21 @@ export default function Settings() {
                 gridOn ? 'bg-accent' : 'bg-ink-700',
               )}
             >
+              {/*
+                `left-1` is load-bearing. Without it the knob is absolutely
+                positioned with `left: auto`, so it starts at its *static*
+                position — and a button centres its (empty) line box, putting
+                that at half the track's width. The translate then stacked on
+                top of that, parking the knob outside the track entirely: it
+                looked switched-on in both states and hung off the right edge
+                of the row. Anchoring the left edge makes the translate the
+                only thing that moves it.
+              */}
               <span
                 aria-hidden
                 className={clsx(
-                  'absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform duration-200',
-                  gridOn ? 'translate-x-6' : 'translate-x-1',
+                  'absolute top-1 left-1 h-5 w-5 rounded-full bg-white shadow transition-transform duration-200',
+                  gridOn ? 'translate-x-5' : 'translate-x-0',
                 )}
               />
             </button>
