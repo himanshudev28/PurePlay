@@ -112,7 +112,7 @@ function ResumeCard() {
           <History size={17} />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-white">
+          <p className="text-sm font-semibold break-words text-white">
             Room in progress · <span className="font-mono tracking-[0.2em]">{resumable.roomId}</span>
           </p>
           <p className="mt-0.5 text-xs text-ink-300">
@@ -220,7 +220,7 @@ function RoomLobby({
             placeholder="ROOM CODE"
             maxLength={6}
             aria-label="Room code"
-            className="min-w-0 flex-1 rounded-xl border border-ink-700 bg-ink-850 px-4 py-2.5 font-mono tracking-[0.25em] text-white uppercase placeholder:font-sans placeholder:tracking-normal placeholder:text-ink-400 focus:border-accent focus:outline-none"
+            className="min-w-0 flex-1 rounded-xl border border-ink-700 bg-ink-850 px-3 py-2.5 font-mono tracking-[0.15em] text-white uppercase placeholder:font-sans placeholder:tracking-normal placeholder:text-ink-400 focus:border-accent focus:outline-none sm:px-4 sm:tracking-[0.25em]"
           />
           <Button variant="solid" onClick={() => join(code)} disabled={!code.trim()} className="shrink-0">
             Join
@@ -344,15 +344,33 @@ function RoomSession({
   return (
     <div className="grid gap-5 lg:grid-cols-[1fr_340px]">
       <div className="space-y-4">
-        <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-ink-800 bg-ink-900/60 p-4">
-          <div>
-            <p className="text-xs tracking-[0.2em] text-ink-400 uppercase">Room</p>
-            <p className="font-mono text-xl tracking-[0.25em] text-white sm:text-2xl">{roomId}</p>
+        {/*
+          Three stacked bands on a phone — identity, status, actions — instead
+          of one wrap container. Six pills of wildly different widths sharing a
+          single `flex-wrap` produced a ragged three-row block on a 360px
+          screen, with the room code stranded on a line of its own.
+        */}
+        <header className="space-y-3 rounded-2xl border border-ink-800 bg-ink-900/60 p-4 sm:flex sm:flex-wrap sm:items-center sm:justify-between sm:gap-3 sm:space-y-0">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs tracking-[0.2em] text-ink-400 uppercase">Room</p>
+              <p className="font-mono text-xl tracking-[0.25em] text-white sm:text-2xl">{roomId}</p>
+            </div>
+            <span
+              className={clsx(
+                'flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium sm:hidden',
+                isHost ? 'bg-accent-dim text-accent' : 'bg-ink-800 text-ink-300',
+              )}
+            >
+              {isHost && <Crown size={12} />}
+              {isHost ? 'Host' : 'Listener'}
+            </span>
           </div>
+
           <div className="flex flex-wrap items-center gap-2">
             <span
               className={clsx(
-                'flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium',
+                'hidden items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium sm:flex',
                 isHost ? 'bg-accent-dim text-accent' : 'bg-ink-800 text-ink-300',
               )}
             >
@@ -360,27 +378,42 @@ function RoomSession({
               {isHost ? 'Host' : 'Listener'}
             </span>
             <SyncBadge />
-            <Button size="sm" variant="outline" onClick={copyLink}>
-              {copied ? <Check size={13} /> : <Copy size={13} />}
-              {copied ? 'Copied' : 'Invite'}
-            </Button>
-            {isHost ? (
-              <Button size="sm" variant="ghost" onClick={endRoom} title="Close the room for everyone">
-                <PowerOff size={13} />
-                End room
+            {/* Actions share the row evenly on a phone, sit at natural width above it */}
+            <div className="flex w-full items-center gap-2 sm:w-auto">
+              <Button size="sm" variant="outline" onClick={copyLink} className="flex-1 sm:flex-none">
+                {copied ? <Check size={13} /> : <Copy size={13} />}
+                {copied ? 'Copied' : 'Invite'}
               </Button>
-            ) : (
-              <Button size="sm" variant="ghost" onClick={leave}>
-                <LogOut size={13} />
-                Leave
-              </Button>
-            )}
-            {isHost && (
-              <Button size="sm" variant="ghost" onClick={leave} title="Leave but keep the room open">
-                <LogOut size={13} />
-                Leave
-              </Button>
-            )}
+              {isHost ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={endRoom}
+                  title="Close the room for everyone"
+                  className="flex-1 sm:flex-none"
+                >
+                  <PowerOff size={13} />
+                  End room
+                </Button>
+              ) : (
+                <Button size="sm" variant="ghost" onClick={leave} className="flex-1 sm:flex-none">
+                  <LogOut size={13} />
+                  Leave
+                </Button>
+              )}
+              {isHost && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={leave}
+                  title="Leave but keep the room open"
+                  className="flex-1 sm:flex-none"
+                >
+                  <LogOut size={13} />
+                  Leave
+                </Button>
+              )}
+            </div>
           </div>
         </header>
 
@@ -416,8 +449,8 @@ function RoomSession({
         )}
 
         {current ? (
-          <div className="flex items-center gap-4 rounded-2xl border border-ink-800 bg-ink-900/60 p-4 sm:p-5">
-            <Artwork src={current.artwork} alt={current.title} className="h-16 w-16 sm:h-20 sm:w-20" />
+          <div className="flex items-center gap-3 rounded-2xl border border-ink-800 bg-ink-900/60 p-4 sm:gap-4 sm:p-5">
+            <Artwork src={current.artwork} alt={current.title} className="h-14 w-14 sm:h-20 sm:w-20" />
             <div className="min-w-0 flex-1">
               <p className="truncate text-base font-semibold text-white sm:text-lg">{current.title}</p>
               <p className="truncate text-sm text-ink-400">{current.artist}</p>
@@ -444,7 +477,7 @@ function RoomSession({
 
         {/* Who can control playback */}
         <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-ink-800 bg-ink-900/60 p-4">
-          <div className="flex items-center gap-2.5 text-sm">
+          <div className="flex min-w-0 flex-1 items-center gap-2.5 text-sm">
             {controlMode === 'everyone' ? (
               <Unlock size={17} className="shrink-0 text-accent" />
             ) : (
@@ -464,14 +497,14 @@ function RoomSession({
             </div>
           </div>
           {isHost && (
-            <div className="flex shrink-0 items-center gap-1 rounded-full bg-ink-850 p-1">
+            <div className="flex w-full shrink-0 items-center gap-1 rounded-full bg-ink-850 p-1 sm:w-auto">
               {(['host', 'everyone'] as const).map((mode) => (
                 <button
                   key={mode}
                   onClick={() => setControlMode(mode)}
                   aria-pressed={controlMode === mode}
                   className={clsx(
-                    'rounded-full px-3 py-1.5 text-xs font-semibold transition',
+                    'flex-1 rounded-full px-3 py-1.5 text-xs font-semibold transition sm:flex-none',
                     controlMode === mode ? 'bg-accent text-ink-950' : 'text-ink-300 hover:text-white',
                   )}
                 >
@@ -530,8 +563,8 @@ function RoomSession({
                 )}
                 title={m.away ? `${m.name} is reconnecting` : undefined}
               >
-                {m.id === hostId && <Crown size={11} className="text-accent" aria-label="Host" />}
-                {m.name}
+                {m.id === hostId && <Crown size={11} className="shrink-0 text-accent" aria-label="Host" />}
+                <span className="max-w-[9rem] truncate">{m.name}</span>
                 {m.away && <span className="text-[10px] text-ink-400">reconnecting…</span>}
                 {isHost && (
                   <button
@@ -555,7 +588,7 @@ function RoomSession({
       </div>
 
       {/* chat */}
-      <aside className="flex h-[min(60dvh,32rem)] min-h-[320px] flex-col rounded-2xl border border-ink-800 bg-ink-900/60 lg:h-[560px]">
+      <aside className="flex h-[min(55dvh,26rem)] min-h-[17rem] flex-col rounded-2xl border border-ink-800 bg-ink-900/60 sm:h-[min(60dvh,32rem)] lg:h-[560px]">
         <h3 className="border-b border-ink-800 px-4 py-3 text-sm font-semibold text-white">Chat</h3>
         <div className="scrollbar-thin flex-1 space-y-3 overflow-y-auto p-4">
           {chat.length === 0 && <p className="text-xs text-ink-400">Say something to the room.</p>}

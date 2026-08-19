@@ -169,6 +169,33 @@
     scroll-snap-align: start;
   }
 
+  /*
+    A list-row control that reveals itself on hover.
+
+    Tailwind's `group-hover:` compiles to a bare `:hover` selector with no
+    `@media (hover: hover)` guard, so on a phone these controls were *never*
+    revealed — while still occupying their width and still accepting taps. A
+    thumb landing near the right edge of a row silently favourited or
+    downloaded a song, and the invisible cluster squeezed every title down to
+    about fifteen characters.
+
+    So: visible by default, and hidden-until-hover only where a real pointer
+    exists. `:focus-visible` and a focused sibling keep it keyboard-reachable.
+  */
+  .row-action {
+    opacity: 1;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .row-action {
+      opacity: 0;
+    }
+    .group:hover .row-action,
+    .group:focus-within .row-action,
+    .row-action:focus-visible {
+      opacity: 1;
+    }
+  }
+
   /* --- seek bar / range input styling --- */
   .seek-bar {
     -webkit-appearance: none;

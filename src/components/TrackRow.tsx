@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { Heart, Play, Pause, Download, Check, Loader2, ListPlus, ListMusic, Plus, Trash2 } from 'lucide-react'
+import {
+  Heart, Play, Pause, Download, Check, Loader2, ListPlus, ListMusic, Plus, Trash2,
+  MoreVertical, X, ChevronLeft,
+} from 'lucide-react'
 import clsx from 'clsx'
 import type { Track } from '@/types'
 import { usePlayer } from '@/store/player'
@@ -9,26 +12,15 @@ import { formatDuration } from '@/lib/format'
 import { Artwork, NowPlayingBars } from './ui'
 import { keyOf } from '@/lib/db'
 
-/**
- * The playlist feature's missing half: the store could create playlists and
- * remove tracks, but no control anywhere ADDED one — every playlist was
- * permanently empty while its empty state said "add songs from search".
- */
-function AddToPlaylistMenu({ track }: { track: Track }) {
-  const playlists = useLibrary((s) => s.playlists)
-  const addToPlaylist = useLibrary((s) => s.addToPlaylist)
-  const createPlaylist = useLibrary((s) => s.createPlaylist)
-  const [open, setOpen] = useState(false)
-  const [addedTo, setAddedTo] = useState<string | null>(null)
-  const rootRef = useRef<HTMLDivElement>(null)
-
+/** Close on outside pointer-down or Escape — shared by the popover and the sheet. */
+function useDismissable(open: boolean, close: () => void, rootRef: React.RefObject<HTMLElement | null>) {
   useEffect(() => {
     if (!open) return
     const onPointer = (e: PointerEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false)
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) close()
     }
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false)
+      if (e.key === 'Escape') close()
     }
     document.addEventListener('pointerdown', onPointer)
     document.addEventListener('keydown', onKey)
@@ -36,16 +28,80 @@ function AddToPlaylistMenu({ track }: { track: Track }) {
       document.removeEventListener('pointerdown', onPointer)
       document.removeEventListener('keydown', onKey)
     }
-  }, [open])
+  }, [open, close, rootRef])
+}
+
+/**
+ * The "add to playlist" choices.
+ *
+ * Shared, because the same list has to appear in two very different shells: a
+ * small popover on a pointer device, and a bottom sheet on a phone.
+ */
+function PlaylistChoices({ track, onDone }: { track: Track; onDone: () => void }) {
+  const playlists = useLibrary((s) => s.playlists)
+  const addToPlaylist = useLibrary((s) => s.addToPlaylist)
+  const createPlaylist = useLibrary((s) => s.createPlaylist)
+  const [addedTo, setAddedTo] = useState<string | null>(null)
 
   const add = (playlistId: string) => {
     addToPlaylist(playlistId, track)
     setAddedTo(playlistId)
     setTimeout(() => {
-      setOpen(false)
+      onDone()
       setAddedTo(null)
     }, 700)
   }
+
+  return (
+    <>
+      <button
+        role="menuitem"
+        onClick={() => {
+          const name = window.prompt('Name the new playlist:')
+          if (name?.trim()) add(createPlaylist(name.trim()))
+        }}
+        className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-white hover:bg-ink-800 sm:py-2 sm:text-xs"
+      >
+        <Plus size={15} className="shrink-0" /> New playlist
+      </button>
+      {playlists.length > 0 && <div className="mx-2 my-1 h-px bg-ink-800" aria-hidden />}
+      {playlists.map((p) => {
+        const alreadyIn = p.tracks.some((t) => keyOf(t) === keyOf(track))
+        return (
+          <button
+            key={p.id}
+            role="menuitem"
+            onClick={() => add(p.id)}
+            disabled={alreadyIn}
+            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm text-ink-200 hover:bg-ink-800 disabled:cursor-default disabled:opacity-50 sm:py-2 sm:text-xs"
+          >
+            {addedTo === p.id || alreadyIn ? (
+              <Check size={15} className="shrink-0 text-accent" />
+            ) : (
+              <ListMusic size={15} className="shrink-0 text-ink-400" />
+            )}
+            <span className="min-w-0 flex-1 truncate">{p.name}</span>
+            <span className="shrink-0 text-[10px] tabular-nums text-ink-400">{p.tracks.length}</span>
+          </button>
+        )
+      })}
+    </>
+  )
+}
+
+/**
+ * The playlist feature's missing half: the store could create playlists and
+ * remove tracks, but no control anywhere ADDED one — every playlist was
+ * permanently empty while its empty state said "add songs from search".
+ *
+ * Pointer devices only; a phone reaches the same choices through the row's
+ * overflow sheet, where a popover anchored to a row near the bottom of the
+ * screen would have opened off the end of it.
+ */
+function AddToPlaylistMenu({ track }: { track: Track }) {
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+  useDismissable(open, () => setOpen(false), rootRef)
 
   return (
     <div ref={rootRef} className="relative">
@@ -56,10 +112,8 @@ function AddToPlaylistMenu({ track }: { track: Track }) {
         aria-expanded={open}
         aria-haspopup="menu"
         className={clsx(
-          'rounded-full p-2 transition hover:bg-ink-700 hover:text-white',
-          open
-            ? 'text-white'
-            : 'text-ink-400 opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
+          'rounded-full p-2 text-ink-400 transition hover:bg-ink-700 hover:text-white',
+          open ? 'text-white' : 'row-action',
         )}
       >
         <ListMusic size={15} />
@@ -70,40 +124,204 @@ function AddToPlaylistMenu({ track }: { track: Track }) {
           aria-label="Add to playlist"
           className="absolute top-full right-0 z-50 mt-1 w-52 rounded-xl border border-ink-700 bg-ink-900 p-1 shadow-2xl"
         >
-          <button
-            role="menuitem"
-            onClick={() => {
-              const name = window.prompt('Name the new playlist:')
-              if (name?.trim()) add(createPlaylist(name.trim()))
-            }}
-            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-medium text-white hover:bg-ink-800"
-          >
-            <Plus size={13} /> New playlist
-          </button>
-          {playlists.length > 0 && <div className="mx-2 my-1 h-px bg-ink-800" aria-hidden />}
-          {playlists.map((p) => {
-            const alreadyIn = p.tracks.some((t) => keyOf(t) === keyOf(track))
-            return (
-              <button
-                key={p.id}
-                role="menuitem"
-                onClick={() => add(p.id)}
-                disabled={alreadyIn}
-                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-ink-200 hover:bg-ink-800 disabled:cursor-default disabled:opacity-50"
-              >
-                {addedTo === p.id || alreadyIn ? (
-                  <Check size={13} className="shrink-0 text-accent" />
-                ) : (
-                  <ListMusic size={13} className="shrink-0 text-ink-400" />
-                )}
-                <span className="min-w-0 flex-1 truncate">{p.name}</span>
-                <span className="shrink-0 text-[10px] tabular-nums text-ink-400">{p.tracks.length}</span>
-              </button>
-            )
-          })}
+          <PlaylistChoices track={track} onDone={() => setOpen(false)} />
         </div>
       )}
     </div>
+  )
+}
+
+/** One full-width action line inside the sheet. */
+function SheetItem({
+  icon,
+  label,
+  onClick,
+  danger,
+}: {
+  icon: React.ReactNode
+  label: string
+  onClick: () => void
+  danger?: boolean
+}) {
+  return (
+    <button
+      role="menuitem"
+      onClick={onClick}
+      className={clsx(
+        'flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-medium transition hover:bg-ink-800',
+        danger ? 'text-red-400' : 'text-white',
+      )}
+    >
+      <span className="shrink-0 text-ink-400">{icon}</span>
+      {label}
+    </button>
+  )
+}
+
+/**
+ * Every row action, in a bottom sheet — the phone half of the row's controls.
+ *
+ * A sheet rather than a popover because rows sit anywhere on a long scrolling
+ * list, and an anchored menu on the last row opens into nothing. It also gives
+ * each action a full-width, thumb-sized target instead of a 30px circle.
+ */
+function TrackSheet({
+  track,
+  onRemove,
+  downloadLabel,
+  status,
+  supported,
+  onDownload,
+}: {
+  track: Track
+  onRemove?: () => void
+  downloadLabel: string
+  status: ReturnType<typeof useDownloads>['status']
+  supported: boolean
+  onDownload: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [picking, setPicking] = useState(false)
+  const sheetRef = useRef<HTMLDivElement>(null)
+
+  const close = () => {
+    setOpen(false)
+    setPicking(false)
+  }
+  useDismissable(open, close, sheetRef)
+
+  // The page must not scroll behind an open sheet.
+  useEffect(() => {
+    if (!open) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [open])
+
+  /*
+    Widening past the breakpoint hides this whole subtree via `sm:hidden`
+    without unmounting it: the sheet would vanish mid-interaction while
+    `body { overflow: hidden }` stayed applied, leaving a page that could no
+    longer be scrolled and no visible control to undo it.
+  */
+  useEffect(() => {
+    if (!open) return
+    const mq = window.matchMedia('(min-width: 640px)')
+    const onChange = () => {
+      if (mq.matches) {
+        setOpen(false)
+        setPicking(false)
+      }
+    }
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [open])
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        title="More actions"
+        aria-label={`More actions for ${track.title}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="rounded-full p-2 text-ink-400 transition hover:bg-ink-700 hover:text-white"
+      >
+        <MoreVertical size={16} />
+      </button>
+
+      {open && (
+        <div className="fixed inset-0 z-60 flex items-end bg-black/60 backdrop-blur-sm">
+          <div
+            ref={sheetRef}
+            role="menu"
+            aria-label={`Actions for ${track.title}`}
+            className="max-h-[75dvh] w-full overflow-y-auto rounded-t-2xl border-t border-ink-700 bg-ink-900 p-2 pb-[max(env(safe-area-inset-bottom,0px),0.5rem)] shadow-2xl"
+          >
+            <div className="mb-1 flex items-center gap-3 px-2 py-2">
+              {picking ? (
+                <button
+                  onClick={() => setPicking(false)}
+                  aria-label="Back"
+                  className="rounded-full p-1.5 text-ink-300 hover:bg-ink-800 hover:text-white"
+                >
+                  <ChevronLeft size={18} />
+                </button>
+              ) : (
+                <Artwork src={track.artwork} alt="" rounded="rounded-lg" className="h-10 w-10" />
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-white">
+                  {picking ? 'Add to playlist' : track.title}
+                </p>
+                {!picking && <p className="truncate text-xs text-ink-400">{track.artist}</p>}
+              </div>
+              <button
+                onClick={close}
+                aria-label="Close"
+                className="shrink-0 rounded-full p-1.5 text-ink-400 hover:bg-ink-800 hover:text-white"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="h-px bg-ink-800" aria-hidden />
+
+            {picking ? (
+              <div className="pt-1">
+                <PlaylistChoices track={track} onDone={close} />
+              </div>
+            ) : (
+              <div className="pt-1">
+                {supported && (
+                  <SheetItem
+                    icon={
+                      status === 'downloading' ? (
+                        <Loader2 size={17} className="animate-spin" />
+                      ) : status === 'done' ? (
+                        <Check size={17} className="text-accent" />
+                      ) : (
+                        <Download size={17} />
+                      )
+                    }
+                    label={downloadLabel}
+                    onClick={() => {
+                      onDownload()
+                      if (status !== 'downloading') close()
+                    }}
+                  />
+                )}
+                <SheetItem
+                  icon={<ListMusic size={17} />}
+                  label="Add to playlist"
+                  onClick={() => setPicking(true)}
+                />
+                <SheetItem
+                  icon={<ListPlus size={17} />}
+                  label="Add to queue"
+                  onClick={() => {
+                    usePlayer.getState().enqueue(track)
+                    close()
+                  }}
+                />
+                {onRemove && (
+                  <SheetItem
+                    icon={<Trash2 size={17} />}
+                    label="Remove from this list"
+                    danger
+                    onClick={() => {
+                      onRemove()
+                      close()
+                    }}
+                  />
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 
@@ -141,6 +359,8 @@ export function TrackRow({
         : status === 'error'
           ? (downloadError ?? 'Download failed — click to retry')
           : 'Download for offline'
+
+  const onDownload = () => (status === 'done' ? void remove() : void download())
 
   return (
     <div
@@ -187,7 +407,9 @@ export function TrackRow({
         {formatDuration(track.duration)}
       </span>
 
-      <div className="flex items-center gap-0.5">
+      <div className="flex shrink-0 items-center gap-0.5">
+        {/* Favourite keeps a permanent target at every size — it is the one
+            action a listener reaches for mid-scroll. */}
         <button
           onClick={() => toggleFavorite(track)}
           title={fav ? 'Remove from favorites' : 'Add to favorites'}
@@ -195,63 +417,79 @@ export function TrackRow({
           aria-pressed={fav}
           className={clsx(
             'rounded-full p-2 transition hover:bg-ink-700',
-            fav ? 'text-accent' : 'text-ink-400 opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
+            fav ? 'text-accent' : 'text-ink-400 row-action',
           )}
         >
           <Heart size={15} fill={fav ? 'currentColor' : 'none'} />
         </button>
 
-        {supported && (
-          <button
-            onClick={() => (status === 'done' ? void remove() : void download())}
-            title={downloadLabel}
-            aria-label={`${downloadLabel}: ${track.title}`}
-            aria-busy={status === 'downloading' || undefined}
-            className={clsx(
-              'relative rounded-full p-2 transition hover:bg-ink-700',
-              status === 'done' && 'text-accent',
-              status === 'error' && 'text-accent-soft opacity-100',
-              status !== 'done' &&
-                status !== 'error' &&
-                'text-ink-400 opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
-            )}
-          >
-            {status === 'downloading' ? (
-              <Loader2 size={15} className="animate-spin" />
-            ) : status === 'done' ? (
-              <Check size={15} />
-            ) : (
-              <Download size={15} />
-            )}
-            {status === 'downloading' && progress > 0 && (
-              <span className="absolute -bottom-0.5 left-1/2 w-6 -translate-x-1/2 overflow-hidden rounded-full bg-ink-700">
-                <span className="block h-0.5 bg-accent" style={{ width: `${progress * 100}%` }} />
-              </span>
-            )}
-          </button>
-        )}
+        {/*
+          Wide screens keep every action inline behind hover. Narrow ones get
+          a single overflow button instead: four 30px circles ate 124px of a
+          360px row and left song titles truncated to about fifteen characters.
+        */}
+        <div className="hidden items-center gap-0.5 sm:flex">
+          {supported && (
+            <button
+              onClick={onDownload}
+              title={downloadLabel}
+              aria-label={`${downloadLabel}: ${track.title}`}
+              aria-busy={status === 'downloading' || undefined}
+              className={clsx(
+                'relative rounded-full p-2 transition hover:bg-ink-700',
+                status === 'done' && 'text-accent',
+                status === 'error' && 'text-accent-soft',
+                status !== 'done' && status !== 'error' && 'text-ink-400 row-action',
+              )}
+            >
+              {status === 'downloading' ? (
+                <Loader2 size={15} className="animate-spin" />
+              ) : status === 'done' ? (
+                <Check size={15} />
+              ) : (
+                <Download size={15} />
+              )}
+              {status === 'downloading' && progress > 0 && (
+                <span className="absolute -bottom-0.5 left-1/2 w-6 -translate-x-1/2 overflow-hidden rounded-full bg-ink-700">
+                  <span className="block h-0.5 bg-accent" style={{ width: `${progress * 100}%` }} />
+                </span>
+              )}
+            </button>
+          )}
 
-        <AddToPlaylistMenu track={track} />
+          <AddToPlaylistMenu track={track} />
 
-        {onRemove ? (
-          <button
-            onClick={onRemove}
-            title="Remove"
-            aria-label={`Remove ${track.title}`}
-            className="rounded-full p-2 text-ink-400 opacity-0 transition hover:bg-ink-700 hover:text-white group-hover:opacity-100 focus-visible:opacity-100"
-          >
-            <Trash2 size={15} />
-          </button>
-        ) : (
-          <button
-            onClick={() => usePlayer.getState().enqueue(track)}
-            title="Add to queue"
-            aria-label={`Add ${track.title} to queue`}
-            className="rounded-full p-2 text-ink-400 opacity-0 transition hover:bg-ink-700 hover:text-white group-hover:opacity-100 focus-visible:opacity-100"
-          >
-            <ListPlus size={15} />
-          </button>
-        )}
+          {onRemove ? (
+            <button
+              onClick={onRemove}
+              title="Remove"
+              aria-label={`Remove ${track.title}`}
+              className="row-action rounded-full p-2 text-ink-400 transition hover:bg-ink-700 hover:text-white"
+            >
+              <Trash2 size={15} />
+            </button>
+          ) : (
+            <button
+              onClick={() => usePlayer.getState().enqueue(track)}
+              title="Add to queue"
+              aria-label={`Add ${track.title} to queue`}
+              className="row-action rounded-full p-2 text-ink-400 transition hover:bg-ink-700 hover:text-white"
+            >
+              <ListPlus size={15} />
+            </button>
+          )}
+        </div>
+
+        <div className="sm:hidden">
+          <TrackSheet
+            track={track}
+            onRemove={onRemove}
+            downloadLabel={downloadLabel}
+            status={status}
+            supported={supported}
+            onDownload={onDownload}
+          />
+        </div>
       </div>
     </div>
   )

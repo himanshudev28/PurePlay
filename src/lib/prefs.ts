@@ -52,3 +52,52 @@ export function setVolume(v: number) {
     // ignore
   }
 }
+
+/* ------------------------------------------------------------------ layout */
+
+export const HOME_LAYOUTS = ['grid', 'classic'] as const
+export type HomeLayout = (typeof HOME_LAYOUTS)[number]
+
+/**
+ * The card grid is the default home: a dense wall of playable cards with a
+ * "Quick picks" block at the very top, so the first thing on screen is
+ * something to press rather than a single oversized hero.
+ * "classic" keeps the original hero-and-shelves page for anyone who prefers it.
+ */
+export const DEFAULT_HOME_LAYOUT: HomeLayout = 'grid'
+
+const HOME_LAYOUT_KEY = 'lf:home-layout'
+
+const isHomeLayout = (v: unknown): v is HomeLayout => HOME_LAYOUTS.includes(v as HomeLayout)
+
+/**
+ * localStorage isn't reactive, so the Settings toggle and the Home page it
+ * controls are kept in step by a tiny pub/sub — the same shape `useDownloads`
+ * uses for IndexedDB.
+ */
+const layoutListeners = new Set<() => void>()
+
+export function getHomeLayout(): HomeLayout {
+  try {
+    const saved = localStorage.getItem(HOME_LAYOUT_KEY)
+    return isHomeLayout(saved) ? saved : DEFAULT_HOME_LAYOUT
+  } catch {
+    return DEFAULT_HOME_LAYOUT
+  }
+}
+
+export function setHomeLayout(layout: HomeLayout) {
+  try {
+    localStorage.setItem(HOME_LAYOUT_KEY, layout)
+  } catch {
+    // private mode / quota — the choice still applies to this session
+  }
+  layoutListeners.forEach((fn) => fn())
+}
+
+export function subscribeHomeLayout(fn: () => void): () => void {
+  layoutListeners.add(fn)
+  return () => {
+    layoutListeners.delete(fn)
+  }
+}

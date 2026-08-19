@@ -11,9 +11,9 @@ export default function Favorites() {
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-wrap items-center justify-between gap-4">
+      <header className="flex flex-wrap items-center justify-between gap-3 sm:gap-4">
         <div>
-          <h1 className="font-display flex items-center gap-2 text-3xl font-extrabold tracking-tight text-white">
+          <h1 className="font-display flex items-center gap-2 text-2xl font-extrabold tracking-tight text-white sm:text-3xl">
             <Heart size={26} className="text-accent" fill="currentColor" aria-hidden />
             Favorites
           </h1>
@@ -22,12 +22,12 @@ export default function Favorites() {
           </p>
         </div>
         {favorites.length > 0 && (
-          <div className="flex gap-2">
-            <Button variant="accent" onClick={() => void playQueue(favorites, 0)}>
+          <div className="flex w-full gap-2 sm:w-auto">
+            <Button variant="accent" onClick={() => void playQueue(favorites, 0)} className="flex-1 sm:flex-none">
               <Play size={15} fill="currentColor" />
               Play
             </Button>
-            <Button variant="outline" onClick={() => void playShuffled(favorites)}>
+            <Button variant="outline" onClick={() => void playShuffled(favorites)} className="flex-1 sm:flex-none">
               <Shuffle size={15} />
               Shuffle
             </Button>

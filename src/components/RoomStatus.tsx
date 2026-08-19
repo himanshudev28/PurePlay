@@ -34,7 +34,9 @@ export function RoomStatus() {
   }, [toast, clearToast])
 
   // sit above the player bar when there is one
-  const bottom = hasTrack && viewMode === 'bar' ? 'bottom-[150px] sm:bottom-[112px]' : 'bottom-[88px] sm:bottom-6'
+  // Keyed on `lg`, not `sm`: the mobile tab bar is `lg:hidden`, so a toast
+  // lifted only to `sm:bottom-6` sat behind it on every tablet-width screen.
+  const bottom = hasTrack && viewMode === 'bar' ? 'bottom-[150px] lg:bottom-[112px]' : 'bottom-[88px] lg:bottom-6'
   const onRoomPage = pathname.startsWith('/room')
 
   return (
@@ -43,7 +45,9 @@ export function RoomStatus() {
         <Link
           to={`/room?id=${roomId}`}
           title={isHost ? 'You are hosting this room' : 'You are listening in a room'}
-          className="fixed top-3 right-3 z-40 flex items-center gap-1.5 rounded-full border border-ink-700 bg-ink-900/90 px-3 py-1.5 text-xs font-medium text-white shadow-lg backdrop-blur transition hover:border-accent lg:top-4 lg:right-4"
+          // Below the sticky top bar, not on top of it: at top-3 this pill
+          // landed exactly on the bar's search button and swallowed its taps.
+          className="fixed top-16 right-3 z-40 flex items-center gap-1.5 rounded-full border border-ink-700 bg-ink-900/90 px-3 py-1.5 text-xs font-medium text-white shadow-lg backdrop-blur transition hover:border-accent lg:right-4"
         >
           {hostAway ? (
             <WifiOff size={12} className="text-amber-300" />

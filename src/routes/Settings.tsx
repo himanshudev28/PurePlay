@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
-  Palette, Gauge, HardDrive, Smartphone, Check, Loader2, Layers,
+  Palette, Gauge, HardDrive, Smartphone, Check, Loader2, Layers, LayoutGrid,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { THEMES, applyTheme, getSavedThemeId } from '@/lib/theme'
-import { getQuality, setQuality, type Quality } from '@/lib/prefs'
+import {
+  getQuality, setQuality, type Quality,
+  getHomeLayout, setHomeLayout, DEFAULT_HOME_LAYOUT, type HomeLayout,
+} from '@/lib/prefs'
 import { storageUsage, listDownloads, removeDownload } from '@/lib/db'
 import { notifyDownloadsChanged } from '@/hooks/useDownloads'
 import { useInstallPrompt } from '@/hooks/useInstallPrompt'
@@ -18,9 +21,24 @@ const QUALITIES: { id: Quality; label: string; desc: string }[] = [
   { id: '96', label: 'Data Saver (96 kbps)', desc: 'Uses minimal data; best for weak connections.' },
 ]
 
+/** The two home pages, described by what actually differs between them. */
+const HOME_LAYOUT_OPTIONS: { id: HomeLayout; label: string; desc: string }[] = [
+  {
+    id: 'grid',
+    label: 'Card grid',
+    desc: 'Opens on a block of songs you can play straight away, then rows of cards to browse.',
+  },
+  {
+    id: 'classic',
+    label: 'Classic hero',
+    desc: 'One large featured track at the top, with the song list at the bottom of the page.',
+  },
+]
+
 export default function Settings() {
   const [activeTheme, setActiveTheme] = useState(getSavedThemeId)
   const [quality, setQualityState] = useState<Quality>(getQuality)
+  const [homeLayout, setHomeLayoutState] = useState<HomeLayout>(getHomeLayout)
   const { canInstall, isInstalled, promptInstall } = useInstallPrompt()
   const { playerTheme, setPlayerTheme, syncAccent, setSyncAccent } = usePlayerTheme()
 
@@ -46,6 +64,13 @@ export default function Settings() {
     setQualityState(q)
     setQuality(q)
   }
+
+  const handleHomeLayoutChange = (l: HomeLayout) => {
+    setHomeLayoutState(l)
+    setHomeLayout(l)
+  }
+
+  const gridOn = homeLayout === 'grid'
 
   const handlePlayerThemeChange = (id: PlayerThemeId) => {
     setPlayerTheme(id)
@@ -105,6 +130,104 @@ export default function Settings() {
         <h1 className="font-display text-3xl font-extrabold tracking-tight text-white">Settings</h1>
         <p className="mt-1 text-sm text-ink-400">Theme, playback quality, offline storage, and app install.</p>
       </header>
+
+      <Section
+        icon={<LayoutGrid size={20} />}
+        title="Home layout"
+        description="Choose how the home page is arranged."
+      >
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-ink-800 bg-ink-950/40 p-4">
+            <div className="min-w-0 space-y-0.5">
+              <span className="text-sm font-semibold text-white">Card grid home</span>
+              <p className="text-xs text-ink-400">
+                {gridOn
+                  ? 'On — songs to play come first, browsing shelves below.'
+                  : 'Off — using the classic featured-track layout.'}
+                {DEFAULT_HOME_LAYOUT === 'grid' && gridOn ? ' (Default)' : ''}
+              </p>
+            </div>
+            <button
+              role="switch"
+              aria-checked={gridOn}
+              aria-label="Card grid home layout"
+              onClick={() => handleHomeLayoutChange(gridOn ? 'classic' : 'grid')}
+              className={clsx(
+                'relative h-7 w-12 shrink-0 rounded-full transition-colors duration-200',
+                gridOn ? 'bg-accent' : 'bg-ink-700',
+              )}
+            >
+              <span
+                aria-hidden
+                className={clsx(
+                  'absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform duration-200',
+                  gridOn ? 'translate-x-6' : 'translate-x-1',
+                )}
+              />
+            </button>
+          </div>
+
+          {/* Both layouts named and sketched, so the switch above says what it
+              switches between rather than leaving it to be discovered. */}
+          <div role="radiogroup" aria-label="Home layout" className="grid gap-3 sm:grid-cols-2">
+            {HOME_LAYOUT_OPTIONS.map((opt) => {
+              const isSelected = homeLayout === opt.id
+              return (
+                <button
+                  key={opt.id}
+                  role="radio"
+                  aria-checked={isSelected}
+                  onClick={() => handleHomeLayoutChange(opt.id)}
+                  className={clsx(
+                    'flex flex-col gap-3 rounded-xl border p-4 text-left transition-colors',
+                    isSelected
+                      ? 'border-accent bg-accent/10 ring-2 ring-accent/30'
+                      : 'border-ink-800 bg-ink-950/40 hover:border-ink-600',
+                  )}
+                >
+                  <span aria-hidden className="flex h-16 w-full flex-col gap-1 rounded-lg bg-ink-900 p-2">
+                    {opt.id === 'grid' ? (
+                      <>
+                        <span className="grid grid-cols-3 gap-1">
+                          {Array.from({ length: 6 }, (_, i) => (
+                            <span key={i} className="h-2.5 rounded-sm bg-accent/50" />
+                          ))}
+                        </span>
+                        <span className="mt-1 flex gap-1">
+                          {Array.from({ length: 5 }, (_, i) => (
+                            <span key={i} className="h-6 flex-1 rounded-sm bg-ink-700" />
+                          ))}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="h-7 w-full rounded-sm bg-accent/50" />
+                        <span className="mt-1 flex gap-1">
+                          {Array.from({ length: 5 }, (_, i) => (
+                            <span key={i} className="h-4 flex-1 rounded-sm bg-ink-700" />
+                          ))}
+                        </span>
+                      </>
+                    )}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-white">{opt.label}</span>
+                      {opt.id === DEFAULT_HOME_LAYOUT && (
+                        <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-bold tracking-wider text-accent uppercase">
+                          Default
+                        </span>
+                      )}
+                      {isSelected && <Check size={14} className="ml-auto shrink-0 text-accent" />}
+                    </span>
+                    <span className="mt-0.5 block text-xs text-ink-400">{opt.desc}</span>
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      </Section>
 
       <Section
         icon={<Palette size={20} />}
