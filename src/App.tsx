@@ -7,6 +7,7 @@ import { PlayerBar } from '@/components/PlayerBar'
 import { FullPlayer } from '@/components/FullPlayer'
 import { CardPlayer } from '@/components/CardPlayer'
 import { RoomStatus } from '@/components/RoomStatus'
+import { ShortcutsHelp } from '@/components/ShortcutsHelp'
 import Home from '@/routes/Home'
 import Search from '@/routes/Search'
 import Library from '@/routes/Library'
@@ -99,6 +100,8 @@ export default function App() {
         <PlayerBar />
         <CardPlayer />
         <FullPlayer />
+        {/* Installs the keyboard map as well as rendering the `?` sheet. */}
+        <ShortcutsHelp />
       </BrowserRouter>
     </PlayerThemeProvider>
   )

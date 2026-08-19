@@ -3,6 +3,7 @@ import {
   ChevronDown, Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1,
   Heart, Share2, Music2, Video, FileText, Check, ListMusic,
   Download, Sparkles, Info, Loader2, Maximize2, Flower2, Sun, MoreVertical, Trash2,
+  Moon, ChevronRight,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { usePlayer } from '@/store/player'
@@ -16,6 +17,7 @@ import { Artwork, NowPlayingBars, QueueTailLoader, SeekRange, TransportLock, use
 import { CastButton } from './CastButton'
 import { keyOf } from '@/lib/db'
 import { usePlayerTheme } from '@/contexts/PlayerThemeContext'
+import { useOverlayHistory } from '@/hooks/useOverlayHistory'
 
 const INITIAL_BACKDROP = 'linear-gradient(180deg, rgba(30, 20, 50, 0.98) 0%, rgba(15, 10, 25, 1) 100%)'
 
@@ -37,6 +39,7 @@ export function FullPlayer() {
   const [mode, setMode] = useState<'song' | 'video'>('song')
   const [bgGradient, setBgGradient] = useState(INITIAL_BACKDROP)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [sleepOpen, setSleepOpen] = useState(false)
 
   const lyricsContainerRef = useRef<HTMLDivElement>(null)
   const activeLineRef = useRef<HTMLElement | null>(null)
@@ -56,6 +59,9 @@ export function FullPlayer() {
   const current = s.current
   const open = s.fullPlayerOpen && !!current
   const closeFullPlayer = s.closeFullPlayer
+
+  // Back / the edge-swipe gesture dismisses the player, like any other screen.
+  useOverlayHistory(open, closeFullPlayer, 'full-player')
 
   const { status: downloadStatus, download, remove: removeDownload, supported: downloadSupported } =
     useDownloads(current)
@@ -152,6 +158,9 @@ export function FullPlayer() {
   }, [menuOpen])
 
   useEffect(() => setMenuOpen(false), [current?.id, open])
+  useEffect(() => {
+    if (!menuOpen) setSleepOpen(false)
+  }, [menuOpen])
 
   const handleShare = useCallback(async () => {
     if (!current) return
@@ -472,7 +481,7 @@ export function FullPlayer() {
     behind one ⋯ button in the top-right corner now.
   */
   const MenuItem = ({
-    icon: Icon, label, onClick, active = false, trailing, spinning = false,
+    icon: Icon, label, onClick, active = false, trailing, spinning = false, keepOpen = false,
   }: {
     icon: typeof ListMusic
     label: string
@@ -480,11 +489,13 @@ export function FullPlayer() {
     active?: boolean
     trailing?: ReactNode
     spinning?: boolean
+    /** For rows that open something inside the menu rather than acting. */
+    keepOpen?: boolean
   }) => (
     <button
       role="menuitem"
       onClick={() => {
-        setMenuOpen(false)
+        if (!keepOpen) setMenuOpen(false)
         onClick()
       }}
       className={clsx(
@@ -497,6 +508,92 @@ export function FullPlayer() {
       {trailing}
     </button>
   )
+
+  /*
+    How long is left, in whole minutes, rounded up — "1 min" has to keep saying
+    something until the music actually stops, and a rounded-down "0 min" reads
+    as a timer that already fired.
+  */
+  const sleepLabel = (): string | null => {
+    const t = s.sleepTimer
+    if (!t) return null
+    if (t.mode === 'track') return 'End of song'
+    const left = Math.max(0, Math.ceil(((t.endsAt ?? 0) - Date.now()) / 60_000))
+    return `${left} min left`
+  }
+
+  const SLEEP_OPTIONS: Array<{ label: string; value: number | 'track' }> = [
+    { label: 'End of this song', value: 'track' },
+    { label: '15 minutes', value: 15 },
+    { label: '30 minutes', value: 30 },
+    { label: '45 minutes', value: 45 },
+    { label: '1 hour', value: 60 },
+  ]
+
+  const SleepMenu = () => {
+    const active = s.sleepTimer
+    return (
+      <>
+        {MenuItem({
+          icon: Moon,
+          label: 'Sleep timer',
+          active: !!active,
+          // Stays open: picking a duration is the next step, and closing the
+          // menu to reopen it one row lower is a pointless round trip.
+          onClick: () => setSleepOpen((v) => !v),
+          keepOpen: true,
+          trailing: active ? (
+            <span className="rounded-full bg-accent/20 px-2 py-0.5 text-[11px] font-semibold text-accent">
+              {sleepLabel()}
+            </span>
+          ) : (
+            <ChevronRight
+              size={15}
+              className={clsx('text-white/40 transition-transform', sleepOpen && 'rotate-90')}
+            />
+          ),
+        })}
+
+        {sleepOpen && (
+          <div className="mb-1 ml-3 space-y-0.5 border-l border-white/10 pl-2">
+            {SLEEP_OPTIONS.map((opt) => (
+              <button
+                key={String(opt.value)}
+                role="menuitem"
+                onClick={() => {
+                  s.setSleepTimer(opt.value)
+                  setSleepOpen(false)
+                  setMenuOpen(false)
+                }}
+                className={clsx(
+                  'flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition hover:bg-white/10',
+                  (opt.value === 'track' ? active?.mode === 'track' : false)
+                    ? 'text-accent'
+                    : 'text-white/80 hover:text-white',
+                )}
+              >
+                {opt.label}
+                {opt.value === 'track' && active?.mode === 'track' && <Check size={14} />}
+              </button>
+            ))}
+            {active && (
+              <button
+                role="menuitem"
+                onClick={() => {
+                  s.setSleepTimer(null)
+                  setSleepOpen(false)
+                  setMenuOpen(false)
+                }}
+                className="flex w-full items-center rounded-lg px-3 py-2 text-sm font-medium text-white/60 transition hover:bg-white/10 hover:text-white"
+              >
+                Turn off timer
+              </button>
+            )}
+          </div>
+        )}
+      </>
+    )
+  }
 
   const MoreMenu = ({ className = '' }: { className?: string }) => (
     <div ref={moreMenuRef} className={clsx('relative', className)}>
@@ -543,6 +640,10 @@ export function FullPlayer() {
             active: activeTab === 'info' && showRightPanel,
             onClick: () => togglePanel('info'),
           })}
+
+          <div className="mx-2 my-1 h-px bg-white/10" aria-hidden />
+
+          {SleepMenu()}
 
           <div className="mx-2 my-1 h-px bg-white/10" aria-hidden />
 

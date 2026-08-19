@@ -65,28 +65,8 @@ export function PlaybackHost() {
     }
   }, [current, playing])
 
-  // keyboard transport controls
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const el = e.target as HTMLElement
-      if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable) return
-      // Space on a focused button/link must activate that control, not also
-      // toggle playback underneath it
-      if (e.code === 'Space' && (el.tagName === 'BUTTON' || el.tagName === 'A' || el.tagName === 'SELECT')) return
-
-      const p = usePlayer.getState()
-      if (e.code === 'Space') {
-        e.preventDefault()
-        p.toggle()
-      } else if (e.code === 'ArrowRight' && e.shiftKey) {
-        void p.next()
-      } else if (e.code === 'ArrowLeft' && e.shiftKey) {
-        void p.prev()
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  // Transport keys live in useKeyboardShortcuts, mounted at the app root —
+  // this component used to own a three-key subset of them.
 
   const videoActive = usePlayer((s) => s.videoActive)
   const expanded = usePlayer((s) => s.videoExpanded)

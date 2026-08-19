@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
-  Palette, Gauge, HardDrive, Smartphone, Check, Loader2, Layers, LayoutGrid,
+  Palette, Gauge, HardDrive, Smartphone, Check, Loader2, Layers, LayoutGrid, Keyboard,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { THEMES, applyTheme, getSavedThemeId } from '@/lib/theme'
@@ -9,6 +9,7 @@ import {
   getHomeLayout, setHomeLayout, DEFAULT_HOME_LAYOUT, type HomeLayout,
 } from '@/lib/prefs'
 import { storageUsage, listDownloads, removeDownload } from '@/lib/db'
+import { openShortcutsHelp } from '@/components/ShortcutsHelp'
 import { notifyDownloadsChanged } from '@/hooks/useDownloads'
 import { useInstallPrompt } from '@/hooks/useInstallPrompt'
 import { formatBytes } from '@/lib/format'
@@ -237,6 +238,30 @@ export default function Settings() {
             })}
           </div>
         </div>
+      </Section>
+
+      {/* Shortcuts are invisible by design until someone goes looking, so the
+          one place people go looking is where they're named. */}
+      <Section
+        icon={<Keyboard size={20} />}
+        title="Keyboard shortcuts"
+        description="Space plays, arrows seek, and a dozen more on a laptop keyboard."
+      >
+        <button
+          onClick={openShortcutsHelp}
+          className="flex w-full items-center justify-between gap-4 rounded-xl border border-ink-800 bg-ink-950/40 p-4 text-left transition-colors hover:border-ink-600"
+        >
+          <span className="min-w-0">
+            <span className="block text-sm font-semibold text-white">View the full list</span>
+            <span className="mt-0.5 block text-xs text-ink-400">
+              Or press <kbd className="rounded border border-white/15 bg-white/10 px-1.5 py-0.5 text-[11px] font-semibold text-white">?</kbd>{' '}
+              anywhere in the app.
+            </span>
+          </span>
+          <span className="shrink-0 rounded-full bg-accent/15 px-3 py-1.5 text-xs font-semibold text-accent">
+            Show
+          </span>
+        </button>
       </Section>
 
       <Section

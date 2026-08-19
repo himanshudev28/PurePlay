@@ -26,6 +26,11 @@ const MAX_BEHIND = 50
 
 export type RepeatMode = 'off' | 'all' | 'one'
 
+export interface SleepTimer {
+  mode: 'time' | 'track'
+  endsAt: number | null
+}
+
 interface PlayerState {
   queue: Track[]
   /** index into `queue`, -1 when nothing is loaded */
@@ -88,6 +93,14 @@ interface PlayerState {
   toggleVideoExpanded: () => void
   setVideoDocked: (docked: boolean) => void
 
+  /**
+   * A pending sleep timer, or null. `endsAt` is an epoch ms for a countdown
+   * and null when the timer is waiting for the current track to finish.
+   */
+  sleepTimer: SleepTimer | null
+  /** Minutes, `'track'` to stop when this song ends, or null to cancel. */
+  setSleepTimer: (option: number | 'track' | null) => void
+
   fullPlayerOpen: boolean
   playerViewMode: 'bar' | 'full' | 'card'
   openFullPlayer: () => void
@@ -142,6 +155,9 @@ function emitTransport(action: TransportAction) {
 
 /** the engine currently driving playback, so we can stop it before switching */
 let activeEngine: PlaybackEngine | null = null
+
+/** Pending sleep-timer timeout — see `setSleepTimer`. */
+let sleepHandle: ReturnType<typeof setTimeout> | null = null
 
 /**
  * Monotonic token. Every load() captures the value at entry and bails after each
@@ -199,11 +215,42 @@ export const usePlayer = create<PlayerState>((set, get) => ({
   videoActive: false,
   videoExpanded: false,
   videoDocked: false,
+  sleepTimer: null,
   fullPlayerOpen: false,
   playerViewMode: 'bar',
 
   toggleVideoExpanded: () => set((s) => ({ videoExpanded: !s.videoExpanded })),
   setVideoDocked: (docked) => set({ videoDocked: docked }),
+  /*
+    Sleep timer.
+
+    The countdown lives in a module-level handle rather than in state because
+    it has to survive every re-render and every track change — the whole point
+    is that it outlives what is playing. Firing pauses rather than stops: the
+    queue, the position and the artwork are all still there in the morning.
+  */
+  setSleepTimer: (option) => {
+    if (sleepHandle) {
+      clearTimeout(sleepHandle)
+      sleepHandle = null
+    }
+    if (option === null) {
+      set({ sleepTimer: null })
+      return
+    }
+    if (option === 'track') {
+      set({ sleepTimer: { mode: 'track', endsAt: null } })
+      return
+    }
+    const endsAt = Date.now() + option * 60_000
+    sleepHandle = setTimeout(() => {
+      sleepHandle = null
+      set({ sleepTimer: null })
+      get().pause()
+    }, option * 60_000)
+    set({ sleepTimer: { mode: 'time', endsAt } })
+  },
+
   openFullPlayer: () => set({ fullPlayerOpen: true }),
   closeFullPlayer: () => set({ fullPlayerOpen: false }),
   toggleFullPlayer: () => set((s) => ({ fullPlayerOpen: !s.fullPlayerOpen })),
@@ -288,8 +335,22 @@ export const usePlayer = create<PlayerState>((set, get) => ({
   },
 
   async next(auto = false) {
-    const { queue, index, repeat, shuffle } = get()
+    const { queue, index, repeat, shuffle, sleepTimer } = get()
     if (!queue.length) return
+
+    /*
+      "Stop after this song" is enforced here rather than on a timer: the point
+      of it is the *track boundary*, which only the auto-advance knows about. A
+      deliberate skip is not the end of the song, so it passes through and the
+      timer waits for whatever gets played next to finish instead.
+    */
+    if (auto && sleepTimer?.mode === 'track') {
+      set({ sleepTimer: null })
+      get().pause()
+      activeEngine?.seek(0)
+      set({ position: 0 })
+      return
+    }
     // An auto-advance is still a room-wide event: if this client isn't driving,
     // the controller's next track will arrive on its own.
     if (!allowed('next')) return
