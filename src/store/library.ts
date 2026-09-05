@@ -80,3 +80,21 @@ export const useLibrary = create<LibraryState>()(
     { name: 'lf:library' },
   ),
 )
+
+/**
+ * A live favourite flag for one track.
+ *
+ * `useLibrary((s) => s.isFavorite)` looks equivalent and is not: the action is
+ * created once and keeps the same identity forever, so a component subscribing
+ * to it is subscribing to something that never changes and is never told when
+ * the list does. Every heart in the app was therefore repainting only when its
+ * row happened to re-render for some unrelated reason — on the player surfaces,
+ * the timeupdate tick four times a second.
+ *
+ * This subscribes to the answer instead of to the function, so a heart updates
+ * the instant it is pressed, and only the rows whose flag actually changed
+ * re-render.
+ */
+export function useIsFavorite(track: Track | null | undefined): boolean {
+  return useLibrary((s) => (track ? s.favorites.some((t) => keyOf(t) === keyOf(track)) : false))
+}

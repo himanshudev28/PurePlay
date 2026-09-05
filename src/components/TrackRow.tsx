@@ -6,7 +6,7 @@ import {
 import clsx from 'clsx'
 import type { Track } from '@/types'
 import { usePlayer } from '@/store/player'
-import { useLibrary } from '@/store/library'
+import { useIsFavorite, useLibrary } from '@/store/library'
 import { useDownloads } from '@/hooks/useDownloads'
 import { formatDuration } from '@/lib/format'
 import { Artwork, NowPlayingBars } from './ui'
@@ -360,21 +360,27 @@ export function TrackRow({
   queue?: Track[]
   onRemove?: () => void
 }) {
-  const current = usePlayer((s) => s.current)
-  const playing = usePlayer((s) => s.playing)
   const playTrack = usePlayer((s) => s.playTrack)
   const toggle = usePlayer((s) => s.toggle)
+  /*
+    Subscribe to this row's own flags, not to the store's `current`/`playing`.
+    Reading the raw values meant every rendered row — a couple of hundred of
+    them across a home page — re-rendered whenever any song started, stopped or
+    changed, which is exactly the moment the tap that caused it wants the main
+    thread. Now the two rows whose state actually flipped re-render, and the
+    rest are told nothing.
+  */
+  const key = keyOf(track)
+  const isCurrent = usePlayer((s) => keyOf(s.current) === key)
+  const isPlaying = usePlayer((s) => s.playing && keyOf(s.current) === key)
 
-  const isFavorite = useLibrary((s) => s.isFavorite)
   const toggleFavorite = useLibrary((s) => s.toggleFavorite)
 
   const {
     status, progress, error: downloadError, download, remove, supported, saveStatus, saveToDevice,
   } = useDownloads(track)
 
-  const isCurrent = current ? keyOf(current) === keyOf(track) : false
-  const isPlaying = isCurrent && playing
-  const fav = isFavorite(track)
+  const fav = useIsFavorite(track)
 
   const downloadLabel =
     status === 'done'

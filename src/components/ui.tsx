@@ -91,6 +91,48 @@ export function SeekRange({ className }: { className?: string }) {
 }
 
 /**
+ * Paints every progress fill in the app from one CSS variable.
+ *
+ * A seek fill is the one thing on a player surface that truly changes with the
+ * playhead, and wiring it through React state meant every timeupdate re-rendered
+ * the whole surface around it. This writes `--seek-pct` straight to the document
+ * from a store subscription instead: no render, no reconciliation, just a style
+ * property change the compositor picks up. Fills read `width: var(--seek-pct)`.
+ *
+ * Idempotent — mounted by each player surface, so whichever is on screen keeps
+ * the variable fresh.
+ */
+export function useSeekProgressVar() {
+  useEffect(() => {
+    const root = document.documentElement
+    const write = ({ position, duration }: { position: number; duration: number }) => {
+      const pct = duration > 0 ? Math.min(100, Math.max(0, (position / duration) * 100)) : 0
+      root.style.setProperty('--seek-pct', `${pct.toFixed(3)}%`)
+    }
+    write(usePlayer.getState())
+    return usePlayer.subscribe(write)
+  }, [])
+}
+
+/**
+ * The elapsed clock, as its own subscriber.
+ *
+ * Rounded to whole seconds in the selector, which is all the label shows — so
+ * this re-renders once a second rather than on all four ticks, and re-renders
+ * nothing but this one span.
+ */
+export function PositionLabel({ className }: { className?: string }) {
+  const seconds = usePlayer((s) => Math.floor(s.position))
+  return <span className={className}>{formatDuration(seconds)}</span>
+}
+
+/** The track length, likewise isolated from the surface that displays it. */
+export function DurationLabel({ className }: { className?: string }) {
+  const duration = usePlayer((s) => s.duration)
+  return <span className={className}>{formatDuration(duration)}</span>
+}
+
+/**
  * Marks the row/card that is currently playing.
  *
  * This replaces the accent left-border that used to flag the active track: a
@@ -132,6 +174,9 @@ export function Artwork({
           src={src}
           alt={alt}
           loading="lazy"
+          // async decoding keeps a large cover off the main thread — the
+          // default lets a decode land inside a frame and drop it
+          decoding="async"
           onError={() => setBroken(true)}
           className="h-full w-full object-cover"
         />

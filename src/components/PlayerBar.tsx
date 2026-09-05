@@ -7,10 +7,13 @@ import {
 } from 'lucide-react'
 import clsx from 'clsx'
 import type { Track, Collection } from '@/types'
-import { usePlayer } from '@/store/player'
-import { useLibrary } from '@/store/library'
+import { usePlayer, usePlayerChrome } from '@/store/player'
+import { useIsFavorite, useLibrary } from '@/store/library'
 import { getSuggestions } from '@/services/recommendations'
-import { Artwork, NowPlayingBars, QueueTailLoader, SeekRange, TransportLock, useTransportLocked } from './ui'
+import {
+  Artwork, NowPlayingBars, QueueTailLoader, SeekRange, TransportLock, useSeekProgressVar,
+  useTransportLocked,
+} from './ui'
 import { keyOf } from '@/lib/db'
 import { usePlayerTheme } from '@/contexts/PlayerThemeContext'
 
@@ -22,7 +25,7 @@ function TransportControls({
   btnClass?: string
   playBg?: string
 }) {
-  const s = usePlayer()
+  const s = usePlayerChrome()
   const locked = useTransportLocked()
   // Left clickable on purpose: a disabled button explains nothing on a phone,
   // whereas pressing it raises the toast that says who is driving.
@@ -79,7 +82,7 @@ function TransportControls({
 }
 
 function VolumeControl({ textClass = 'text-white/60 hover:text-white' }: { textClass?: string }) {
-  const s = usePlayer()
+  const s = usePlayerChrome()
   return (
     <div className="hidden items-center gap-2 md:flex">
       <button
@@ -121,10 +124,14 @@ function ErrorBanner() {
 }
 
 export function PlayerBar() {
-  const s = usePlayer()
+  const s = usePlayerChrome()
+  // keeps `--seek-pct` (read by every theme's fill below) in step with the
+  // playhead without this component re-rendering for it
+  useSeekProgressVar()
   const [queueOpen, setQueueOpen] = useState(false)
-  const isFavorite = useLibrary((l) => l.isFavorite)
   const toggleFavorite = useLibrary((l) => l.toggleFavorite)
+  // hook, so it must run before the `visible` bail-out below
+  const fav = useIsFavorite(s.current)
   const { playerTheme } = usePlayerTheme()
 
   const barRef = useRef<HTMLDivElement>(null)
@@ -155,9 +162,6 @@ export function PlayerBar() {
 
   if (!visible || !current) return null
 
-  const fav = isFavorite(current)
-  const pct = s.duration ? (s.position / s.duration) * 100 : 0
-
   // TransportControls / VolumeControl / ErrorBanner are defined at module scope
   // (below) so their component type is stable. Defining them inline here made
   // React remount the whole transport on every render — and the bar re-renders
@@ -179,7 +183,7 @@ export function PlayerBar() {
           {/* Seek bar */}
           <div className="group relative h-1.5 cursor-pointer">
             <span aria-hidden className="absolute inset-0" style={{ background: '#c0b8ac' }} />
-            <span aria-hidden className="absolute inset-y-0 left-0" style={{ width: `${pct}%`, background: '#8a7d6a' }} />
+            <span aria-hidden className="absolute inset-y-0 left-0" style={{ width: 'var(--seek-pct, 0%)', background: '#8a7d6a' }} />
             <SeekRange />
           </div>
 
@@ -233,7 +237,7 @@ export function PlayerBar() {
         >
           <div className="group relative h-1.5 cursor-pointer">
             <span aria-hidden className="absolute inset-0 bg-white/20" />
-            <span aria-hidden className="absolute inset-y-0 left-0 bg-white" style={{ width: `${pct}%` }} />
+            <span aria-hidden className="absolute inset-y-0 left-0 bg-white" style={{ width: 'var(--seek-pct, 0%)' }} />
             <SeekRange />
           </div>
 
@@ -281,7 +285,7 @@ export function PlayerBar() {
         >
           <div className="group relative h-1 cursor-pointer">
             <span aria-hidden className="absolute inset-0 bg-gray-800" />
-            <span aria-hidden className="absolute inset-y-0 left-0 bg-white" style={{ width: `${pct}%` }} />
+            <span aria-hidden className="absolute inset-y-0 left-0 bg-white" style={{ width: 'var(--seek-pct, 0%)' }} />
             <SeekRange />
           </div>
 
@@ -330,7 +334,7 @@ export function PlayerBar() {
         >
           <div className="group relative h-1.5 cursor-pointer">
             <span aria-hidden className="absolute inset-0 bg-rose-950/40" />
-            <span aria-hidden className="absolute inset-y-0 left-0 bg-rose-400 shadow-[0_0_8px_#f43f5e]" style={{ width: `${pct}%` }} />
+            <span aria-hidden className="absolute inset-y-0 left-0 bg-rose-400 shadow-[0_0_8px_#f43f5e]" style={{ width: 'var(--seek-pct, 0%)' }} />
             <SeekRange />
           </div>
 
@@ -382,7 +386,7 @@ export function PlayerBar() {
         >
           <div className="group relative h-1.5 cursor-pointer">
             <span aria-hidden className="absolute inset-0 bg-orange-950/40" />
-            <span aria-hidden className="absolute inset-y-0 left-0 bg-amber-300 shadow-[0_0_8px_#fbbf24]" style={{ width: `${pct}%` }} />
+            <span aria-hidden className="absolute inset-y-0 left-0 bg-amber-300 shadow-[0_0_8px_#fbbf24]" style={{ width: 'var(--seek-pct, 0%)' }} />
             <SeekRange />
           </div>
 
@@ -434,7 +438,7 @@ export function PlayerBar() {
         >
           <div className="group relative h-1.5 cursor-pointer">
             <span aria-hidden className="absolute inset-0 bg-teal-950/40" />
-            <span aria-hidden className="absolute inset-y-0 left-0 bg-cyan-300 shadow-[0_0_8px_#06b6d4]" style={{ width: `${pct}%` }} />
+            <span aria-hidden className="absolute inset-y-0 left-0 bg-cyan-300 shadow-[0_0_8px_#06b6d4]" style={{ width: 'var(--seek-pct, 0%)' }} />
             <SeekRange />
           </div>
 
@@ -486,7 +490,7 @@ export function PlayerBar() {
         >
           <div className="group relative h-1.5 cursor-pointer">
             <span aria-hidden className="absolute inset-0 bg-indigo-950/40" />
-            <span aria-hidden className="absolute inset-y-0 left-0 bg-indigo-300 shadow-[0_0_8px_#818cf8]" style={{ width: `${pct}%` }} />
+            <span aria-hidden className="absolute inset-y-0 left-0 bg-indigo-300 shadow-[0_0_8px_#818cf8]" style={{ width: 'var(--seek-pct, 0%)' }} />
             <SeekRange />
           </div>
 
@@ -550,7 +554,7 @@ export function PlayerBar() {
             <span
               aria-hidden
               className="absolute inset-y-0 left-0"
-              style={{ width: `${pct}%`, background: 'linear-gradient(90deg, #38bdf8, #818cf8)', boxShadow: '0 0 12px rgba(56,189,248,0.7)' }}
+              style={{ width: 'var(--seek-pct, 0%)', background: 'linear-gradient(90deg, #38bdf8, #818cf8)', boxShadow: '0 0 12px rgba(56,189,248,0.7)' }}
             />
             <SeekRange />
           </div>
@@ -599,7 +603,7 @@ export function PlayerBar() {
       >
         <div className="group relative h-1.5 cursor-pointer">
           <span aria-hidden className="absolute inset-0 rounded-t bg-ink-700" />
-          <span aria-hidden className="absolute inset-y-0 left-0 rounded-t bg-accent" style={{ width: `${pct}%` }} />
+          <span aria-hidden className="absolute inset-y-0 left-0 rounded-t bg-accent" style={{ width: 'var(--seek-pct, 0%)' }} />
           <SeekRange />
         </div>
 

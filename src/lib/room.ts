@@ -1,4 +1,5 @@
-import mqtt from 'mqtt'
+// type-only: erased at build time, so it pulls no mqtt code into the bundle
+import type { MqttClient } from 'mqtt'
 import type { Track } from '@/types'
 
 /**
@@ -173,54 +174,74 @@ function mqttTransport(roomId: string, onMessage: Handler): RoomTransport {
   const queued: RoomMessage[] = []
   let connected = false
   let fallback: RoomTransport | null = null
-
-  const client = mqtt.connect(url, {
-    connectTimeout: 8000,
-    reconnectPeriod: 4000,
-    // a random client id per tab so the broker keeps our sessions distinct
-    clientId: `pureplay_${Math.random().toString(16).slice(2, 10)}`,
-    clean: true,
-  })
+  let client: MqttClient | null = null
+  let closed = false
 
   const degrade = () => {
-    if (fallback || connected) return
+    if (fallback || connected || closed) return
     try {
-      client.end(true)
+      client?.end(true)
     } catch {
       /* already gone */
     }
+    client = null
     fallback = broadcastTransport(roomId, onMessage)
     queued.splice(0).forEach((m) => fallback!.send(m))
   }
 
-  client.on('connect', () => {
-    connected = true
-    client.subscribe(topic)
-    queued.splice(0).forEach((m) => client.publish(topic, JSON.stringify(m)))
-  })
-  client.on('message', (_topic, payload) => {
-    try {
-      onMessage(JSON.parse(payload.toString()) as RoomMessage)
-    } catch {
-      /* ignore malformed frames */
-    }
-  })
-  client.on('error', degrade)
   // mqtt.js keeps retrying forever; if the first attempt hasn't landed, degrade
   const timer = setTimeout(degrade, 9000)
+
+  /*
+    mqtt.js is ~1.5MB of source and by far the largest thing this app depends
+    on, and until this import was deferred it was in the entry chunk: every
+    cold start downloaded, parsed and executed a broker client, on every device,
+    for a feature most sessions never touch. It is pulled in here, at the moment
+    someone actually joins a room. Nothing upstream has to wait for it — sends
+    queue exactly as they already did before the socket opened.
+  */
+  void import('mqtt')
+    .then(({ default: mqtt }) => {
+      if (closed || fallback) return
+      const c = mqtt.connect(url, {
+        connectTimeout: 8000,
+        reconnectPeriod: 4000,
+        // a random client id per tab so the broker keeps our sessions distinct
+        clientId: `pureplay_${Math.random().toString(16).slice(2, 10)}`,
+        clean: true,
+      })
+      client = c
+      c.on('connect', () => {
+        connected = true
+        c.subscribe(topic)
+        queued.splice(0).forEach((m) => c.publish(topic, JSON.stringify(m)))
+      })
+      c.on('message', (_topic, payload) => {
+        try {
+          onMessage(JSON.parse(payload.toString()) as RoomMessage)
+        } catch {
+          /* ignore malformed frames */
+        }
+      })
+      c.on('error', degrade)
+    })
+    // an offline device can't fetch the chunk at all — same outcome as a broker
+    // that won't answer, so take the same fallback
+    .catch(degrade)
 
   return {
     send(msg) {
       if (fallback) return fallback.send(msg)
-      if (connected) client.publish(topic, JSON.stringify(msg))
+      if (connected && client) client.publish(topic, JSON.stringify(msg))
       else queued.push(msg)
     },
     close() {
+      closed = true
       clearTimeout(timer)
       if (fallback) fallback.close()
       else
         try {
-          client.end(true)
+          client?.end(true)
         } catch {
           /* already gone */
         }

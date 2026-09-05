@@ -1,24 +1,22 @@
 import { Play, Pause, SkipBack, SkipForward, Maximize2, X, Heart, Shuffle } from 'lucide-react'
 import clsx from 'clsx'
-import { usePlayer } from '@/store/player'
-import { useLibrary } from '@/store/library'
-import { Artwork, SeekRange } from './ui'
-import { formatDuration } from '@/lib/format'
+import { usePlayerChrome } from '@/store/player'
+import { useIsFavorite, useLibrary } from '@/store/library'
+import { Artwork, DurationLabel, PositionLabel, SeekRange, useSeekProgressVar } from './ui'
 import { usePlayerTheme } from '@/contexts/PlayerThemeContext'
 
 export function CardPlayer() {
-  const s = usePlayer()
-  const isFavorite = useLibrary((l) => l.isFavorite)
+  const s = usePlayerChrome()
+  useSeekProgressVar()
   const toggleFavorite = useLibrary((l) => l.toggleFavorite)
+  // hook, so it must run before the `visible` bail-out below
+  const fav = useIsFavorite(s.current)
   const { playerTheme } = usePlayerTheme()
 
   const current = s.current
   const visible = !!current && !s.fullPlayerOpen && s.playerViewMode === 'card'
 
   if (!visible || !current) return null
-
-  const fav = isFavorite(current)
-  const pct = s.duration ? (s.position / s.duration) * 100 : 0
 
   return (
     <div
@@ -89,13 +87,13 @@ export function CardPlayer() {
           <div
             aria-hidden
             className="absolute inset-y-0 left-0 rounded-full bg-accent"
-            style={{ width: `${pct}%` }}
+            style={{ width: 'var(--seek-pct, 0%)' }}
           />
           <SeekRange />
         </div>
         <div className="flex items-center justify-between text-[10px] tabular-nums opacity-60">
-          <span>{formatDuration(s.position)}</span>
-          <span>{formatDuration(s.duration)}</span>
+          <PositionLabel />
+          <DurationLabel />
         </div>
       </div>
 

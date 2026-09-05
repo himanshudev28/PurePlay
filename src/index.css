@@ -82,6 +82,27 @@
     max-width: 100%;
   }
 
+  /*
+    Tap latency.
+
+    A touch browser that still offers double-tap-to-zoom holds every tap for
+    ~300ms to see whether a second one is coming, which is felt as the whole app
+    answering late — the single biggest source of "not snappy" on a phone, and
+    entirely self-inflicted. Nothing here zooms on a double tap, so saying so
+    lets the press land on the first one.
+
+    Deliberately not on `input`: the seek and volume sliders want the browser's
+    own drag handling, and `manipulation` would let a horizontal drag be claimed
+    as a scroll instead.
+  */
+  button,
+  a,
+  summary,
+  label,
+  [role='button'] {
+    touch-action: manipulation;
+  }
+
   /* Light theme overrides so cards, titles, headers on light themes remain high-contrast */
   :root[data-theme-scheme="light"] .text-white {
     color: #292524 !important;
@@ -167,6 +188,23 @@
   }
   .shelf > * {
     scroll-snap-align: start;
+  }
+
+  /*
+    Home stacks a dozen of these, each holding twenty-odd cards with their own
+    artwork — a few hundred elements the browser was styling, laying out and
+    painting whether or not they were anywhere near the viewport, on every
+    scroll frame and on every re-render above them.
+
+    `content-visibility: auto` lets it skip the ones that are off screen
+    entirely and pay for them as they approach. The paired intrinsic size is
+    what keeps that honest: it reserves a shelf's real height up front, so the
+    scrollbar doesn't lurch as rows are skipped and revealed, and `auto`
+    remembers each shelf's true height once it has been measured for real.
+  */
+  .shelf {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 240px;
   }
 
   /*
@@ -321,20 +359,36 @@
       0 0 60px rgb(var(--color-accent-rgb) / 0.06);
   }
 
-  /* shimmer loading animation */
+  /*
+    Shimmer loading animation.
+
+    Animating `background-position` repaints the whole element every frame, and
+    a loading home page puts thirty of these on screen at once — precisely when
+    the main thread is also parsing feed responses and the app can least afford
+    it. Sliding a pseudo-element by `transform` instead hands the whole thing to
+    the compositor: same look, no repaint, no main-thread work per frame.
+  */
   @keyframes shimmer {
-    0% { background-position: -200% 0; }
-    100% { background-position: 200% 0; }
+    from { transform: translateX(-100%); }
+    to   { transform: translateX(100%); }
   }
   .skeleton-shimmer {
+    position: relative;
+    overflow: hidden;
+    background: var(--color-ink-800);
+  }
+  .skeleton-shimmer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
     background: linear-gradient(
       90deg,
-      var(--color-ink-800) 25%,
+      transparent 0%,
       var(--color-ink-700) 50%,
-      var(--color-ink-800) 75%
+      transparent 100%
     );
-    background-size: 200% 100%;
     animation: shimmer 1.5s ease-in-out infinite;
+    will-change: transform;
   }
 
   /* card hover lift */

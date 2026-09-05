@@ -6,14 +6,17 @@ import {
   Moon, ChevronRight, HardDriveDownload,
 } from 'lucide-react'
 import clsx from 'clsx'
-import { usePlayer } from '@/store/player'
-import { useLibrary } from '@/store/library'
+import { usePlayer, usePlayerChrome } from '@/store/player'
+import { useIsFavorite, useLibrary } from '@/store/library'
 import { useDownloads } from '@/hooks/useDownloads'
 import { fetchLyrics, type LyricsData } from '@/services/lyrics'
 import { extractColorFromImage } from '@/lib/colorExtractor'
 import { copyText } from '@/lib/clipboard'
 import { formatDuration } from '@/lib/format'
-import { Artwork, NowPlayingBars, QueueTailLoader, SeekRange, TransportLock, useTransportLocked } from './ui'
+import {
+  Artwork, DurationLabel, NowPlayingBars, PositionLabel, QueueTailLoader, SeekRange, TransportLock,
+  useSeekProgressVar, useTransportLocked,
+} from './ui'
 import { CastButton } from './CastButton'
 import { keyOf } from '@/lib/db'
 import { usePlayerTheme } from '@/contexts/PlayerThemeContext'
@@ -25,10 +28,14 @@ const prefersReducedMotion = () =>
   typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
 export function FullPlayer() {
-  const s = usePlayer()
+  const s = usePlayerChrome()
+  // the progress fills below paint from `--seek-pct`, written straight to the
+  // document — this dialog is far too big to rebuild four times a second
+  useSeekProgressVar()
   const transportLocked = useTransportLocked()
-  const isFavorite = useLibrary((l) => l.isFavorite)
   const toggleFavorite = useLibrary((l) => l.toggleFavorite)
+  // hook, so it must run before the `open` bail-out below
+  const fav = useIsFavorite(s.current)
   const { playerTheme } = usePlayerTheme()
 
   const [lyrics, setLyrics] = useState<LyricsData | null>(null)
@@ -98,15 +105,30 @@ export function FullPlayer() {
     return () => controller.abort()
   }, [current?.id, current?.title, current?.artist])
 
+  /*
+    Synced lyrics are the only part of this dialog that has to follow the
+    playhead, so they are also the only reason to subscribe to it — and only
+    while a synced set is actually loaded. The selector collapses to a constant
+    otherwise, so an unsynced track — most of them — schedules no renders here
+    at all.
+  */
+  const followsLyrics = !!lyrics?.synced
+  /*
+    Quantised to the quarter-second the engines already report on, so the
+    highlight lands exactly where it did before — never ahead of the audio —
+    while identical ticks stop scheduling identical renders.
+  */
+  const lyricTime = usePlayer((st) => (followsLyrics ? Math.floor(st.position * 4) / 4 : 0))
+
   const activeIndex = useMemo(() => {
     if (!lyrics?.synced) return -1
     let found = -1
     for (let i = 0; i < lyrics.lines.length; i++) {
-      if (s.position >= lyrics.lines[i].time) found = i
+      if (lyricTime >= lyrics.lines[i].time) found = i
       else break
     }
     return found
-  }, [lyrics, s.position])
+  }, [lyrics, lyricTime])
 
   useEffect(() => {
     const line = activeLineRef.current
@@ -215,8 +237,6 @@ export function FullPlayer() {
 
   if (!open || !current) return null
 
-  const fav = isFavorite(current)
-  const pct = s.duration ? (s.position / s.duration) * 100 : 0
   const videoAvailable = s.videoActive
 
   /*
@@ -235,13 +255,13 @@ export function FullPlayer() {
         <div
           aria-hidden
           className="absolute inset-y-0 left-0 rounded-full bg-accent"
-          style={{ width: `${pct}%` }}
+          style={{ width: 'var(--seek-pct, 0%)' }}
         />
         <SeekRange />
       </div>
       <div className="flex items-center justify-between text-xs font-medium tabular-nums text-white/80">
-        <span>{formatDuration(s.position)}</span>
-        <span>{formatDuration(s.duration)}</span>
+        <PositionLabel />
+        <DurationLabel />
       </div>
     </div>
   )
@@ -982,12 +1002,12 @@ export function FullPlayer() {
 
               <div className="w-full space-y-2">
                 <div className="group relative h-1 cursor-pointer rounded-full bg-gray-800">
-                  <div aria-hidden className="absolute inset-y-0 left-0 rounded-full bg-white" style={{ width: `${pct}%` }} />
+                  <div aria-hidden className="absolute inset-y-0 left-0 rounded-full bg-white" style={{ width: 'var(--seek-pct, 0%)' }} />
                   <SeekRange />
                 </div>
                 <div className="flex items-center justify-between text-[11px] tabular-nums text-gray-500">
-                  <span>{formatDuration(s.position)}</span>
-                  <span>{formatDuration(s.duration)}</span>
+                  <PositionLabel />
+                  <DurationLabel />
                 </div>
               </div>
 

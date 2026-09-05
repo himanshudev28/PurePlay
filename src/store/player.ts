@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { useStoreWithEqualityFn } from 'zustand/traditional'
 import type { Track } from '@/types'
 import { keyOf } from '@/lib/db'
 import { engineFor, isFromCache, type PlaybackEngine } from '@/playback'
@@ -232,6 +233,37 @@ function initialVolume(): number {
     typeof window.matchMedia === 'function' &&
     window.matchMedia('(min-width: 768px)').matches
   return hasSlider ? getVolume() : 1
+}
+
+/**
+ * The whole player state, minus the playhead.
+ *
+ * `usePlayer()` with no selector subscribes to every field — including
+ * `position`, which a playing engine writes about four times a second. The two
+ * biggest components in the app were built on it, so a playing song re-rendered
+ * PlayerBar and the entire FullPlayer (queue list, lyrics, artwork, six theme
+ * branches) 4×/s forever, competing with scrolling and taps for the main
+ * thread.
+ *
+ * Almost none of that markup depends on the playhead: the progress fill is
+ * painted from a CSS variable (`useSeekProgressVar`) and the clock is its own
+ * leaf component (`PositionLabel`), both updated outside React. This hook is
+ * what everything else reads, so a tick no longer schedules a render at all.
+ */
+export function usePlayerChrome(): PlayerState {
+  return useStoreWithEqualityFn(usePlayer, identity, sameExceptPlayhead)
+}
+
+const identity = (s: PlayerState) => s
+
+/** Equal for render purposes when only the playhead moved. */
+function sameExceptPlayhead(a: PlayerState, b: PlayerState): boolean {
+  if (a === b) return true
+  for (const key of Object.keys(a) as (keyof PlayerState)[]) {
+    if (key === 'position' || key === 'duration') continue
+    if (!Object.is(a[key], b[key])) return false
+  }
+  return true
 }
 
 export const usePlayer = create<PlayerState>((set, get) => ({
