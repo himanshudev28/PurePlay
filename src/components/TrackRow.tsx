@@ -431,13 +431,24 @@ export function TrackRow({
         </span>
       )}
 
-      <div className="min-w-0 flex-1">
-        <p className={clsx('truncate text-sm font-medium', isCurrent ? 'text-accent' : 'text-white')}>
+      {/* Title plays as well as the thumbnail — the song's name is what a
+          listener aims at, and it used to be the one dead spot on the row. */}
+      <button
+        onClick={() => (isCurrent ? toggle() : void playTrack(track, queue))}
+        aria-label={isPlaying ? `Pause ${track.title}` : `Play ${track.title} by ${track.artist}`}
+        className="min-w-0 flex-1 rounded-lg text-left"
+      >
+        <span
+          className={clsx(
+            'block truncate text-sm font-medium',
+            isCurrent ? 'text-accent' : 'text-white',
+          )}
+        >
           {track.title}
           {isCurrent && <span className="sr-only"> (now playing)</span>}
-        </p>
-        <p className="truncate text-xs text-ink-400">{track.artist}</p>
-      </div>
+        </span>
+        <span className="block truncate text-xs text-ink-400">{track.artist}</span>
+      </button>
 
       <span className="hidden text-xs tabular-nums text-ink-400 sm:block">
         {formatDuration(track.duration)}

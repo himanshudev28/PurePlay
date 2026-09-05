@@ -52,16 +52,28 @@ export function CompactTrackRow({ track, queue }: { track: Track; queue: Track[]
         </span>
       </button>
 
-      <div className="min-w-0 flex-1">
-        <p className={clsx('truncate text-sm font-medium', isCurrent ? 'text-accent' : 'text-white')}>
+      {/* The title is a play target too — the artwork thumbnail was the only
+          one, which left the largest, most obviously clickable part of the row
+          inert. Same handler, so a click anywhere on the line behaves alike. */}
+      <button
+        onClick={() => (isCurrent ? toggle() : void playTrack(track, queue))}
+        aria-label={isPlaying ? `Pause ${track.title}` : `Play ${track.title} by ${track.artist}`}
+        className="min-w-0 flex-1 rounded-lg text-left"
+      >
+        <span
+          className={clsx(
+            'block truncate text-sm font-medium',
+            isCurrent ? 'text-accent' : 'text-white',
+          )}
+        >
           {track.title}
           {isCurrent && <span className="sr-only"> (now playing)</span>}
-        </p>
-        <p className="truncate text-xs text-ink-400">
+        </span>
+        <span className="block truncate text-xs text-ink-400">
           {track.artist}
           {track.playCount ? ` • ${formatCount(track.playCount)} plays` : ''}
-        </p>
-      </div>
+        </span>
+      </button>
 
       {isCurrent && <NowPlayingBars className="shrink-0" />}
 

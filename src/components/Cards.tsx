@@ -22,33 +22,45 @@ function TypeBadge({ label, icon: Icon }: { label: string; icon: LucideIcon }) {
 export function TrackCard({ track, queue }: { track: Track; queue?: Track[] }) {
   const playTrack = usePlayer((s) => s.playTrack)
   return (
+    /*
+      The whole card is the play button — title included. Only the artwork used
+      to be clickable, so the obvious target (the song's name) did nothing, and
+      a click a few pixels below the art was silently swallowed. Text elements
+      are spans-as-blocks because a button may only contain phrasing content.
+    */
     <div className="group w-[152px] shrink-0 sm:w-[168px] card-hover">
       <button
         onClick={() => void playTrack(track, queue)}
         aria-label={`Play ${track.title} by ${track.artist}`}
-        className="relative block w-full rounded-xl"
+        className="block w-full rounded-xl text-left"
       >
-        <TypeBadge label="Song" icon={Music2} />
-        <div className="overflow-hidden rounded-xl">
-          <Artwork
-            src={track.artwork}
-            alt=""
-            className="aspect-square w-full ring-1 ring-white/10 transition-transform duration-300 group-hover:scale-105"
-          />
-        </div>
-        {/* gradient overlay for depth */}
-        <span className="pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
-        <span className="absolute right-2 bottom-2 flex h-10 w-10 translate-y-2 items-center justify-center rounded-full bg-accent opacity-0 shadow-lg transition-all duration-200 group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:translate-y-0 group-focus-visible:opacity-100 glow-accent">
-          {/* the glyph has to clear 3:1 against the accent fill; white doesn't */}
-          <Play size={16} fill="currentColor" className="ml-0.5 text-ink-950" />
+        <span className="relative block rounded-xl">
+          <TypeBadge label="Song" icon={Music2} />
+          <span className="block overflow-hidden rounded-xl">
+            <Artwork
+              src={track.artwork}
+              alt=""
+              className="aspect-square w-full ring-1 ring-white/10 transition-transform duration-300 group-hover:scale-105"
+            />
+          </span>
+          {/* gradient overlay for depth */}
+          <span className="pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
+          <span className="absolute right-2 bottom-2 flex h-10 w-10 translate-y-2 items-center justify-center rounded-full bg-accent opacity-0 shadow-lg transition-all duration-200 group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:translate-y-0 group-focus-visible:opacity-100 glow-accent">
+            {/* the glyph has to clear 3:1 against the accent fill; white doesn't */}
+            <Play size={16} fill="currentColor" className="ml-0.5 text-ink-950" />
+          </span>
         </span>
+        <span className="mt-2 block truncate text-sm font-medium text-white transition-colors group-hover:text-accent">
+          {track.title}
+        </span>
+        <span className="block truncate text-xs text-ink-400">{track.artist}</span>
+        {track.playCount ? (
+          // was text-ink-600 — 1.6:1 against the page, effectively invisible
+          <span className="mt-0.5 block text-[11px] text-ink-400">
+            {formatCount(track.playCount)} plays
+          </span>
+        ) : null}
       </button>
-      <p className="mt-2 truncate text-sm font-medium text-white">{track.title}</p>
-      <p className="truncate text-xs text-ink-400">{track.artist}</p>
-      {track.playCount ? (
-        // was text-ink-600 — 1.6:1 against the page, effectively invisible
-        <p className="mt-0.5 text-[11px] text-ink-400">{formatCount(track.playCount)} plays</p>
-      ) : null}
     </div>
   )
 }
