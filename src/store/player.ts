@@ -1,5 +1,5 @@
+import { useCallback, useRef, useSyncExternalStore } from 'react'
 import { create } from 'zustand'
-import { useStoreWithEqualityFn } from 'zustand/traditional'
 import type { Track } from '@/types'
 import { keyOf } from '@/lib/db'
 import { engineFor, isFromCache, type PlaybackEngine } from '@/playback'
@@ -251,10 +251,31 @@ function initialVolume(): number {
  * what everything else reads, so a tick no longer schedules a render at all.
  */
 export function usePlayerChrome(): PlayerState {
-  return useStoreWithEqualityFn(usePlayer, identity, sameExceptPlayhead)
-}
+  /*
+    Built on React's own useSyncExternalStore rather than zustand's
+    `useStoreWithEqualityFn`: that entry point imports the external
+    `use-sync-external-store` shim, which zustand v5 does not install, so it
+    resolves to nothing and throws at runtime — and the bundler reports it only
+    as a thrown error inside the chunk, never as a failed build.
 
-const identity = (s: PlayerState) => s
+    The cache is what makes this work: React re-renders when the snapshot's
+    identity changes, so returning the PREVIOUS state object whenever only the
+    playhead moved is exactly how a tick becomes invisible to the component.
+    getSnapshot has to be stable and side-effect-free across calls, which is why
+    the cache lives in a ref and the callback has no dependencies.
+  */
+  const cached = useRef<PlayerState | null>(null)
+
+  const getSnapshot = useCallback(() => {
+    const next = usePlayer.getState()
+    const prev = cached.current
+    if (prev && sameExceptPlayhead(prev, next)) return prev
+    cached.current = next
+    return next
+  }, [])
+
+  return useSyncExternalStore(usePlayer.subscribe, getSnapshot, getSnapshot)
+}
 
 /** Equal for render purposes when only the playhead moved. */
 function sameExceptPlayhead(a: PlayerState, b: PlayerState): boolean {
